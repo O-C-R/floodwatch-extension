@@ -23,6 +23,7 @@
     "browserify": "^13.1.0",
     "del": "^2.2.0",
     "eslint-plugin-flowtype": "^2.19.0",
+    "event-stream": "^3.3.4",
     "flow-interfaces-chrome": "^0.1.1",
     "glob": "^7.1.0",
     "gulp": "^3.9.1",
