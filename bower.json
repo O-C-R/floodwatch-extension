@@ -1,0 +1,13 @@
+{
+  "name": "floodwatch",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "simple-uuid": "^1.0.1",
+    "jquery": "^3.1.0"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^3.0.2"
+  }
+}
