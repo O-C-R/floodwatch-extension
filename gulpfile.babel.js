@@ -13,7 +13,7 @@ import {stream as wiredep} from 'wiredep';
 import browserify from 'browserify';
 import buffer from 'vinyl-buffer';
 import source from 'vinyl-source-stream';
-import babel from 'babelify';
+import babelify from 'babelify';
 import watchify from 'watchify';
 
 
@@ -41,7 +41,7 @@ function lint(files, options) {
   };
 }
 
-gulp.task('watch', (done) => {
+function buildJS(watch: boolean, done: Function) {
   glob('./app/scripts/*.js', (err: Error, files: string[]) => {
     if (err) {
       done(err);
@@ -51,35 +51,47 @@ gulp.task('watch', (done) => {
       const b = browserify({
         entries: [entry],
         extensions: ['.js'],
-        debug: true,
+        debug: watch,
         cache: {},
         packageCache: {},
         fullPaths: true
       })
-      .transform(babel)
+      .transform(babelify, { sourceMaps: true, sourceMapsAbsolute: false })
       .plugin(watchify);
 
       const bundle = () => {
-        console.log('Rebundling:', entry);
+        if (watch) {
+          console.log('Rebundling:', entry);
+        }
+
         const s = b.bundle()
           .pipe(source(path.basename(entry)))
           .pipe(buffer())
-          .pipe($.sourcemaps.init({ loadMaps: true }))
-          // .pipe($.uglify())
-          .pipe($.sourcemaps.write('./'))
+          // .pipe($.if(watch, $.sourcemaps.init({ loadMaps: true })))
+          // .pipe($.if(watch, $.sourcemaps.write('./')))
+          .pipe($.if(!watch, $.uglify()))
           .pipe(gulp.dest('dist/scripts'));
 
-        s.on('end', () => console.log('Done:', entry));
+        if (watch) {
+          s.on('end', () => console.log('Done rebundling:', entry));
+        }
+
         return s;
       };
 
-      b.on('update', bundle);
+      if (watch) {
+        b.on('update', bundle);
+      }
 
       return bundle();
     });
 
     es.merge(tasks).on('end', done);
   });
+}
+
+gulp.task('watch', (done) => {
+  buildJS(true, done);
 });
 
 gulp.task('lint', lint('app/scripts/**/*.js'));
@@ -111,20 +123,8 @@ gulp.task('html',  () => {
     .pipe(gulp.dest('dist'));
 });
 
-gulp.task('js', () => {
-  // Only top-level scripts get browserified
-  return gulp.src('app/scripts/*.js', { read: false })
-    .pipe($.tap(function(file) {
-      console.log('bundling', file.path);
-      file.contents = browserify(file.path, { debug: true })
-        .transform(babel)
-        .bundle();
-    }))
-    .pipe($.buffer())
-    .pipe($.sourcemaps.init({ loadMaps: true }))
-    .pipe($.uglify())
-    .pipe($.sourcemaps.write('./'))
-    .pipe(gulp.dest('dist/scripts'))
+gulp.task('js', (done) => {
+  buildJS(false, done);
 });
 
 gulp.task('clean', del.bind(null, ['.tmp', 'dist']));

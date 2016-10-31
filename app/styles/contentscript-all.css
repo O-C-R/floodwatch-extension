@@ -1,22 +1,3 @@
-/*if (this.screenState == 'started') {
-  this.$el.addClass('floodwatch-screen-inprogress');
-} else if (this.screenState == 'done') {
-  this.$el.removeClass('floodwatch-screen-inprogress');
-  this.$el.addClass('floodwatch-screen-done');
-}
-
-if (this.isAd) {
-  this.$el.addClass('floodwatch-isad');
-  if (this.recordedAd) {
-    this.$el.addClass('floodwatch-record-none');
-  } else {
-    this.$el.removeClass('floodwatch-record-none');
-    this.$el.addClass('floodwatch-record-done');
-  }
-} else {
-  this.$el.addClass('floodwatch-notad');
-}*/
-
 .floodwatch-screen-inprogress {
   -webkit-filter: sepia(0.5) hue-rotate(30deg);
   filter: sepia(0.5) hue-rotate(30deg);

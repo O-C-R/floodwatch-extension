@@ -15,15 +15,19 @@ export function delayedPromise(time?: ?number): Promise<void> {
   }
 }
 
-export function promiseTimeout<T>(promise: Promise<T>, timeout?: ?number): Promise<T> {
+export function promiseTimeout<T>(promise: Promise<T>, timeout?: ?number, msg?: string): Promise<T> {
+  const stack = new Error().stack;
+
   const timeoutPromise = delayedPromise(timeout)
-    .then(function() { throw new TimeoutError('Timeout'); });
+    .then(function() { throw new TimeoutError(msg || stack || 'Timeout'); });
   return Promise.race([promise,timeoutPromise]);
 }
 
 // Throws on error
 export function pollUntil<T>(cb: <T>() => ?T, interval: number, timeout: number): Promise<T> {
   let timedOut = false;
+
+  const stack = new Error().stack;
 
   const pollPromise = new Promise(function(resolve, reject) {
     function poll() {
@@ -43,7 +47,7 @@ export function pollUntil<T>(cb: <T>() => ?T, interval: number, timeout: number)
     poll();
   });
 
-  return promiseTimeout(pollPromise, timeout)
+  return promiseTimeout(pollPromise, timeout, stack)
     .catch((e) => {
       timedOut = true;
       throw e;
@@ -54,9 +58,11 @@ export function pollUntil<T>(cb: <T>() => ?T, interval: number, timeout: number)
 export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: number, timeout: number): Promise<T> {
   let timedOut = false;
 
+  const stack = new Error().stack;
+
   const pollPromise = new Promise(function(resolve) {
     function poll() {
-      promiseTimeout(cb(), wait)
+      promiseTimeout(cb(), wait, stack)
       .then((res) => {
         if (res) {
           resolve(res);
@@ -74,8 +80,9 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
     poll();
   });
 
-  return promiseTimeout(pollPromise, timeout)
+  return promiseTimeout(pollPromise, timeout, stack)
     .catch((e) => {
+      console.log('timed out in overall');
       timedOut = true;
       throw e;
     });

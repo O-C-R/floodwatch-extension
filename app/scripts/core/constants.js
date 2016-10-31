@@ -16,5 +16,7 @@ export const TYPE_MAP = {
 
 // export const ELEMENT_SELECTOR = Object.keys(TYPE_MAP).join(',');
 export const ELEMENT_SELECTOR = ['img', 'picture', 'audio', 'video', 'frame', 'iframe', 'object', 'embed'].join(',');
+export const ELEMENT_SELECTOR_FRAMES = ['frame', 'iframe'].join(',');
+export const ELEMENT_SELECTOR_NO_FRAMES = ['img', 'picture', 'audio', 'video', 'object', 'embed'].join(',');
 
 export const CAPTURE_THRESHOLD = { ratio: 0.5, area: 16 };

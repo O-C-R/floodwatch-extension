@@ -5,48 +5,49 @@ import $ from 'jquery';
 import {Frame} from './contentscript-app/frame';
 import {promiseTimeout, tryUntil} from './core/util';
 
-async function onload() {
-  let frameId = 'none';
+let frame: Frame;
+let frameId = 'none';
+
+function attachListener() {
+  const msgListener = frame.onWindowMessage.bind(frame);
+  setTimeout(function setupListener() {
+    if (!$(document.body).data('fw-frame-id')) {
+      window.fwFrame = frame;
+      $(document.body).attr('data-fw-frame-id', frame.id);
+      window.addEventListener('message', msgListener, { passive: true });
+
+      setTimeout(setupListener, 5);
+    }
+  }, 5);
+}
+
+async function start() {
   try {
-    const frame = new Frame(document);
+    frame = new Frame(document);
     frameId = frame.id;
 
     console.log(`${frame.id} created in document`, document);
+    attachListener();
 
-    const msgListener = frame.onWindowMessage.bind(frame);
-
-    // TODO: do we have to do this in a setInterval? Maybe we can do it until
-    // the attribute sticks?
-    setTimeout(function() {
-      window.fwFrame = frame;
-      $(document.body).attr('fw-frame-id',frame.id);
-      window.addEventListener('message', msgListener);
-    }, 5);
-
-    window.addEventListener('unload', () => { console.log('UNLOADING', frame.id); });
-
-    console.log(`${frame.id} registering...`);
-    try {
-      // await promiseTimeout(frame.register(), 10000);
-      await frame.register();
-      console.log(`${frame.id} done registering!`);
-    } catch (e) {
-      console.error(`${frame.id} could not register.`, e);
+    if (window.isTop) {
+      console.log(`TOP FRAME: ${frame.id}`);
     }
 
-    console.log(`${frame.id} screening...`);
-    await frame.screenAll();
-    console.log(`${frame.id} done screening!`);
-  } catch(e) {
-    console.error(`${frameId} error!`, e);
-  };
-}
+    try {
+      frame.startFrameMutationObserver();
+      await frame.registerChildren();
+    } catch (e) {
+      // ignore
+    }
 
-function start() {
-  if (document.readyState == 'complete') {
-    onload();
-  } else {
-    window.addEventListener('load', () => onload());
+    // Only start for the top frame.
+    if (window.isTop) {
+      console.log(`${frame.id} screening...`);
+      await frame.startScreen();
+      console.log(`${frame.id} done screening!`);
+    }
+  } catch (e) {
+    console.error(`${frameId} preload error!`, e);
   }
 }
 

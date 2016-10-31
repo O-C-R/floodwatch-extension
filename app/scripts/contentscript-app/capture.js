@@ -74,45 +74,6 @@ function findSelfOrChildBySize($el: JQuery, selector: string, threshold?: Thresh
   return $found;
 }
 
-// export class Capture {
-  // static bindToDoc(doc: Document) {
-  //   doc.addEventListener('fw:capture', function(event: Event) {
-  //     if (event.detail) {
-  //       const captureEvent: FWCaptureEvent = ((event: Object): FWCaptureEvent);
-  //
-  //       new Capture().get($('body'), {
-  //         fwId: captureEvent.detail.fwId,
-  //         allowScreenshot: false
-  //       })
-  //         // .done(function(dataURL, strategy, details){
-  //         //   // captureEvent.detail.respond({ dataURL: dataURL, strategy: strategy, details: details });
-  //         // })
-  //         // .fail(function(error) {
-  //         //   // captureEvent.detail.respond({ error: error });
-  //         // });
-  //     }
-  //   });
-  //
-  //   doc.addEventListener('fw:captureRect', function(event) {
-  //     var detail = event.detail;
-  //
-  //     if (detail.frame == void 0) {
-  //       throw new Error('fw:captureRect event fired without a source frame');
-  //     }
-  //
-  //     var rect = new ElementRect(detail.rect).relativeToElement(detail.frame);
-  //
-  //     //FW.log.capture('parent frame capturing rect', detail.options.fwId);
-  //
-  //     new Capture().captureRect(rect, detail.options)
-  //       .always(function() {
-  //         // FW.log.capture('parent frame got rect capture response', detail.options.fwId);
-  //       })
-  //       .done(function(data) { detail.respond({ data: data }); })
-  //       .fail(function(e) { detail.respond({ error: e }); });
-  //   });
-  // }
-
 type FrameQueryRes = {
   frame: HTMLIFrameElement;
   bestOADiff: ?number;
@@ -123,9 +84,9 @@ function frameChildCB(fwFrame: Frame, oa: number): () => Promise<?FrameQueryRes>
     try {
       const frame: HTMLIFrameElement = this;
       // $FlowIssue: contentWindow is supported by Chrome
-      const contentWindow: WindowProxy = frame.contentWindow;
+      const win: WindowProxy = frame.contentWindow;
 
-      // const res = await fwFrame.outerAreasOfElementsMatching(contentWindow, GRAPHIC_SELECTOR);
+      // const res = await fwFrame.queryouterAreasOfElementsMatching(win, GRAPHIC_SELECTOR);
       const res = { outerAreas: [] };
 
       const areas = res.outerAreas;
@@ -238,16 +199,15 @@ function getFrameDocumentSafely($el: JQuery): ?Document {
 //   return deferred.promise();
 // }
 
-function waitForInnerFrame(win: WindowProxy): Promise<void> {
+function waitForInnerFrame(fwFrame: Frame, win: WindowProxy): Promise<void> {
   let didRespond = false;
 
-  const frame: Frame = window.frame;
-  frame.ping(win).then(function() { didRespond = true; }).catch();
+  fwFrame.ping(win).then(function() { didRespond = true; }).catch();
 
   return pollUntil(() => didRespond, 100, 10000);
 }
 
-function ensureLoaded($el: JQuery): Promise<void> {
+function ensureLoaded(fwFrame: Frame, $el: JQuery): Promise<void> {
   return new Promise((resolve, reject) => {
     const tagName = $el.prop('localName');
 
@@ -257,7 +217,7 @@ function ensureLoaded($el: JQuery): Promise<void> {
         resolve();
       } else {
         // Image has yet to load, wait for that to happen.
-        $el.load(resolve).error(reject);
+        $el.on('load', resolve).on('error', reject);
       }
     } else if (['embed', 'object'].indexOf(tagName) !== -1) {
       const $embed: JQuery = findSelfOrChildBySize($el, EMBED_SELECTOR);
@@ -275,7 +235,7 @@ function ensureLoaded($el: JQuery): Promise<void> {
       if (innerDoc) {
         if (innerDoc.readyState === 'loading') {
           // iframe is not done loading.
-          $(innerDoc).load(resolve).error(reject);
+          $(innerDoc).on('load', resolve).on('error', reject);
         } else {
           // iframe claims to to be done loading, but how do we really know?
           // TODO: use mutation listeners
@@ -286,7 +246,7 @@ function ensureLoaded($el: JQuery): Promise<void> {
 
         if (win) {
           // We couldn't get a document, but we can get the iframe's window.
-          resolve(waitForInnerFrame(win));
+          resolve(waitForInnerFrame(fwFrame, win));
         } else {
           reject(new Error('Cannot capture a frame without a window. Is it attached to the DOM?'));
         }
@@ -295,7 +255,7 @@ function ensureLoaded($el: JQuery): Promise<void> {
       const doc = $el.prop('ownerDocument');
       if (doc.readyState === 'loading') {
         // We're looking at the body of something, but it's not loaded.
-        $(doc).load(resolve).error(reject);
+        $(doc).on('load', resolve).on('error', reject);
       } else {
         // We're looking at the body of something, and it's already loaded.
         resolve();
@@ -314,7 +274,7 @@ export async function capture(fwFrame: Frame, $el: JQuery, options: CaptureOptio
     allowScreenshot: true
   }, options);
 
-  await ensureLoaded($el);
+  await ensureLoaded(fwFrame, $el);
   return captureLoadedElement(fwFrame, $el, options);
 }
 
@@ -328,7 +288,7 @@ async function captureLoadedElement(fwFrame: Frame, $el: JQuery, options: Captur
   const $graphic: ?JQuery = await findBestGraphicInDocTree(fwFrame, $el, options);
   if (!$graphic || $graphic.length == 0) {
     console.error('No graphic element for', $el, $graphic);
-    throw new FWError('No graphic element for', $el);
+    throw new FWError('No graphic element for element');
   }
 
   // TODO: why can't I use CAPTURE_THRESHOLD.area?
@@ -470,7 +430,9 @@ export function getFrameCapture(fwFrame: Frame, $el: JQuery): Promise<string> {
 
   if (win) {
     // TODO: is this safe?
-    const frameChannel: Frame = window.frameChannel;
+    // const frameChannel: Frame = window.frameChannel;
+
+    return Promise.reject(new FWError('Frame capture not implemented yet'))
 
     // return frameChannel.capture(win, { fwId: fwId })
     //   .then((response) => response.dataURL);
@@ -487,7 +449,7 @@ export function requestScreenshot($el: JQuery, options: CaptureOptions): Promise
   }
 
   if (options.threshold && rect.width * rect.height < options.threshold.area) {
-    return Promise.reject(new Error('Ignoring elements that are smaller than ' + options.threshold.area + ' pixels'));
+    return Promise.reject(new FWCaptureError(`Ignoring elements that are smaller than ${options.threshold.area} pixels`));
   }
 
   return captureScreenshot(rect, options);
