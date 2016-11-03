@@ -1,5 +1,7 @@
 // @flow
 
+Error.stackTraceLimit=Infinity;
+
 import $ from 'jquery';
 
 import {Frame} from './contentscript-app/frame';
@@ -10,15 +12,17 @@ let frameId = 'none';
 
 function attachListener() {
   const msgListener = frame.onWindowMessage.bind(frame);
-  setTimeout(function setupListener() {
+  setInterval(function setupListener() {
     if (!$(document.body).data('fw-frame-id')) {
+      console.log(frameId, 'document body not set in', document);
+
       window.fwFrame = frame;
       $(document.body).attr('data-fw-frame-id', frame.id);
       window.addEventListener('message', msgListener, { passive: true });
 
-      setTimeout(setupListener, 5);
+      // setTimeout(setupListener, 50);
     }
-  }, 5);
+  }, 50);
 }
 
 async function start() {
@@ -42,9 +46,11 @@ async function start() {
 
     // Only start for the top frame.
     if (window.isTop) {
-      console.log(`${frame.id} screening...`);
-      await frame.startScreen();
-      console.log(`${frame.id} done screening!`);
+      $(document).ready(async () => {
+        console.log(`${frame.id} screening...`);
+        await frame.startScreen();
+        console.log(`${frame.id} done screening!`);
+      });
     }
   } catch (e) {
     console.error(`${frameId} preload error!`, e);

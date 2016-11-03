@@ -3,11 +3,15 @@
 
 
 import $ from 'jquery';
-import {MD5} from 'crypto-js';
+import * as _ from 'lodash';
 
 import {Frame} from './frame';
-import {TYPE_MAP, ELEMENT_SELECTOR, CAPTURE_THRESHOLD} from '../core/constants';
-import {pollUntil, generateUUID, FWError} from '../core/util';
+import {TYPE_MAP, ELEMENT_SELECTOR, CAPTURE_THRESHOLD, SCROLL_WAIT_TIME, FRAME_LOAD_WAIT_TIME} from '../core/constants';
+import {pollUntil, generateUUID, delayedPromise, FWError} from '../core/util';
+import {serializeImageElement, serializeCanvasElement} from '../core/images';
+import {findSelfOrChildBySize, outerArea, Rect} from '../core/shapes';
+import {ensureFrameLoaded} from '../core/dom';
+import type {Threshold} from '../core/shapes';
 
 const CLASS_SCREEN_PROGRESS = 'floodwatch-screen-inprogress';
 const CLASS_SCREEN_DONE = 'floodwatch-screen-done';
@@ -16,101 +20,67 @@ const CLASS_ISAD = 'floodwatch-isad';
 const CLASS_RECORDED = 'floodwatch-recorded';
 const CLASS_NOTRECORDED = 'floodwatch-notrecorded';
 
-// export class Ad {
-//   $el: JQuery; // jQuery element
-//
-//   id: string;
-//   timestamp: Date;
-//   adAnchor: ?string;
-//   src: ?string;
-//   url: string;
-//   pageTitle: string;
-//
-//   adAnchor: ?string;
-//   w: number;
-//   h: number;
-//
-//   elementId: ?string;
-//   tagType: string;
-//
-//   adPosition: number[];
-//
-//   constructor($el: Object) {
-//     this.$el = $el;
-//
-//     //The basics
-//     this.id = generateUUID();
-//     this.timestamp = new Date();
-//     this.src = $el.attr('src');
-//     this.url = window.location.href;
-//     this.pageTitle = document.title;
-//
-//     // Store anchor
-//     if ($el.parent().is('a')) {
-//       this.adAnchor = $el.parent().attr('href');
-//     } else {
-//       this.adAnchor = null;
-//     }
-//
-//     // If src is null, it's likely a .SWF embedded in an object tag,
-//     // so let's get the .SWF path from that.
-//     if (this.src === undefined) {
-//       for (const el of $el.find('param')) {
-//         if (el.attr('name') == 'movie') {
-//           this.src = el.attr('value');
-//           break;
-//         }
-//       }
-//     }
-//
-//     // Size
-//     this.w = $el.width();
-//     this.h = $el.height();
-//
-//     //The in-page context
-//     this.elementId = $el.attr('id');
-//     this.tagType = $el.tagName;
-//
-//     // Figure out the position of the ad
-//     let currLeft = 0, currTop = 0;
-//     let currElem = $el[0];
-//
-//     if (currElem && currElem.offsetParent) {
-//       while (currElem) {
-//         currLeft += currElem.offsetLeft;
-//         currTop += currElem.offsetTop;
-//
-//         currElem = currElem.offsetParent
-//       }
-//     }
-//     this.adPosition = [currLeft, currTop];
-//   }
-// }
+const ALL_CLASSES = [
+  CLASS_SCREEN_PROGRESS,
+  CLASS_SCREEN_DONE,
+  CLASS_NOTAD,
+  CLASS_ISAD,
+  CLASS_RECORDED,
+  CLASS_NOTRECORDED
+];
+
+const IMG_SELECTOR = 'img';
+const CANVAS_SELECTOR = 'canvas';
+const GRAPHIC_SELECTOR = 'img,canvas';
+const EMBED_SELECTOR = 'embed';
+const FRAME_SELECTOR = 'iframe,frame';
+
+export type CaptureOptions = {
+  threshold?: Threshold;
+}
 
 export class AdElement {
-  id: string;
+  localId: string;
+  serverId: ?string;
+
+  frame: Frame;
+
+  el: Element;
   $el: JQuery;
+
+  graphicEl: ?Element;
+  $graphicEl: ?JQuery;
+
   topUrl: string;
   urls: string[];
   tag: string;
   mediaType: string;
   isAd: boolean;
-  screenState: 'none' | 'started' | 'done';
-  recordedAd: boolean;
   adHtml: string;
 
-  constructor($el: JQuery, topUrl: string) {
-    this.$el = $el;
+  screenState: 'none' | 'started' | 'done';
+  recordedAdState: 'none' | 'done';
+
+  screenshotState: 'none' | 'active';
+  timeAtScreenshotRequest: ?Date;
+
+  constructor(frame: Frame, el: Element, topUrl: string) {
+    this.localId = generateUUID();
+    this.serverId = null;
+
+    this.frame = frame;
+    this.el = el;
+    this.$el = $(el);
     this.topUrl = topUrl;
+
     this.urls = AdElement.getURLsFromElement(this.$el[0]);
-    this.tag = this.$el[0].localName;
+    this.tag = el.localName;
     this.mediaType = TYPE_MAP[this.tag];
-    this.adHtml = $el.prop('outerHTML');
-    this.id = MD5(this.adHtml).toString();
+    this.adHtml = this.$el.prop('outerHTML');
 
     this.isAd = false;
     this.screenState = 'none';
-    this.recordedAd = false;
+    this.recordedAdState = 'none';
   }
 
   static getURLsFromObjectElement(element: HTMLElement): string[] {
@@ -205,8 +175,7 @@ export class AdElement {
     }
 
     // TODO: can we put this somewhere else?
-    this.$el.attr('data-fw-id', this.id);
-    this.$el.attr('data-fw-topurl', this.topUrl);
+    this.$el.attr('data-fw-local-ad-id', this.localId);
 
     this.screenState = 'started';
     this.setStyle();
@@ -234,7 +203,234 @@ export class AdElement {
     });
   }
 
+  ensureImageLoaded(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.$el.prop('complete')) {
+        // Image is done loading, we're good.
+        resolve();
+      } else {
+        // Image has yet to load, wait for that to happen.
+        this.$el.on('load', resolve).on('error', reject);
+      }
+    });
+  }
+
+  // NOTE: this only works for SWFObject loaded SWFs. Not sure what happens otherwise
+  ensureSWFLoaded(embed: Element, timeout: number = 5000): Promise<void> {
+    return pollUntil(function() {
+      if (typeof embed.PercentLoaded === 'function') {
+        return embed.PercentLoaded() == 100;
+      } else {
+        return false;
+      }
+    }, 50, timeout).then(function() {
+      // seems like we need an extra 50 ms to ensure the SWF is really rendered
+      // and everything
+      return delayedPromise(50);
+    });
+  }
+
+  ensureObjectLoaded(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const embed: ?Element = findSelfOrChildBySize(this.el, EMBED_SELECTOR);
+
+        if (embed) {
+          // There's a good embed, make sure it's loaded.
+          resolve(this.ensureSWFLoaded(embed));
+        } else {
+          // No embed found! Continuing, but this is a warning...
+          resolve();
+        }
+      } catch (e) {
+        reject(e);
+      }
+    })
+  }
+
+  ensureLoaded(): Promise<void> {
+    if (this.tag === 'img') {
+      return this.ensureImageLoaded();
+    } else if (['embed', 'object'].indexOf(this.tag) >= 0) {
+      return this.ensureObjectLoaded();
+    } else if (['frame', 'iframe'].indexOf(this.tag) >= 0) {
+      return ensureFrameLoaded(this.el);
+    } else {
+      throw new FWError('Unsupported ad type');
+    }
+  }
+
+  async requestScreenshot(target: Element, options?: CaptureOptions): Promise<string> {
+    console.log(this.localId, this.el, 'requesting screenshot of', target);
+
+    return new Promise((resolve, reject) => {
+      const rect = Rect.forElement(target);
+
+      // Check the rect is in a window
+      if (!rect.window) {
+        return reject(new FWError('Rect has no window!'));
+      }
+      const win: WindowProxy = rect.window;
+
+      const area = rect.relativeToCurrentViewport().scaled(win.devicePixelRatio).baked();
+      const payload = { area };
+
+      this.frame.sendMessageToBackground('captureScreenshot', payload, (res) => {
+        if (res.error) {
+          return reject(res.error);
+        }
+
+        return resolve(res.data.dataUrl);
+      });
+    });
+  }
+
+  async ensureFrameInView(targetIfAny: ?Element, options?: CaptureOptions): Promise<void> {
+    const target = targetIfAny || this.el;
+    const rect = Rect.forElement(target);
+
+    // if ($(target).is(':visible')) {
+    //   console.error(this.localId, target, this.el, 'not visible');
+    //   throw new FWError('Can\'t capture element that is not :visible.');
+    // }
+
+    if (options && options.threshold && rect.width * rect.height < options.threshold.area) {
+      throw new FWError(`Ignoring iframe smaller than ${options.threshold.area} pixels`);
+    }
+
+    // The rect is not the largest container - bump this request up a node.
+    if (!rect.isAbsolute) {
+      throw new FWError('Not absolute capture not implemented ;)');
+    }
+
+    // Rect is not visible, wait for it to be still in the screen.
+    const scrolledRecently = new Date() - this.frame.lastScrollTime < SCROLL_WAIT_TIME;
+    const isInView = Rect.forWindow(rect.window).contains(rect);
+    if (scrolledRecently || !isInView) {
+      await new Promise((resolve, reject) => {
+        let scrollTimer: ?number = null;
+
+        const scrollDone = () => {
+          const newRect = Rect.forElement(target);
+          if (Rect.forWindow(newRect.window).contains(newRect)) {
+            console.log(this.el, 'scrolled into view!');
+            resolve();
+            this.frame.view.removeEventListener('scroll', scrollListener);
+          }
+        }
+
+        const scrollListener = (e: UIEvent) => {
+          if (scrollTimer != null) {
+            clearTimeout(scrollTimer);
+          }
+          scrollTimer = setTimeout(scrollDone, SCROLL_WAIT_TIME);
+        }
+        this.frame.view.addEventListener('scroll', scrollListener);
+      });
+    }
+  }
+
+  async captureTarget(target: Element, options?: CaptureOptions): Promise<string> {
+    const $target: JQuery = $(target);
+
+    if ($target.is(IMG_SELECTOR)) {
+      const imgElem: HTMLImageElement = ((target: Object): HTMLImageElement);
+      return serializeImageElement(imgElem, undefined, options);
+    } else if ($target.is(CANVAS_SELECTOR)) {
+      const canvasElem: HTMLCanvasElement = ((target: Object): HTMLCanvasElement);
+      return serializeCanvasElement(canvasElem, options);
+    } else if ($target.is(FRAME_SELECTOR)) {
+      const iframeTarget = ((target: any): HTMLIFrameElement);
+      await this.frame.areChildrenDoneLoading(iframeTarget);
+
+      this.screenshotState = 'active';
+      this.setStyle();
+
+      await this.ensureFrameInView(target);
+
+      let data = null;
+      try {
+        do {
+          this.timeAtScreenshotRequest = new Date();
+          data = await this.requestScreenshot(target);
+        } while (this.timeAtScreenshotRequest && this.frame.lastScrollTime > this.timeAtScreenshotRequest);
+      } finally {
+        this.screenshotState = 'none';
+        this.setStyle();
+      }
+
+      if (!data) throw new FWError('No Data!');
+      return data;
+    } else {
+      throw new FWError('No way to capture this element!');
+    }
+  }
+
+  async findBestCaptureTarget(options: CaptureOptions): Promise<?Element> {
+    const bestFrame = []; //await bestFrameChild(fwFrame, $el, options.threshold);
+    let bestChild: ?Element = findSelfOrChildBySize(this.el, GRAPHIC_SELECTOR, options.threshold);
+
+    if (!bestChild && this.$el.is(FRAME_SELECTOR)) {
+      bestChild = this.el;
+    }
+
+    return bestChild;
+
+    // if (bestLocal) {
+    //   // There's a child element that passes our threshold
+    //   if (bestFrame
+    //       && bestFrame.bestOADiff !== null
+    //       && bestFrame.bestOADiff !== undefined
+    //       && bestFrame.bestOADiff < outerAreaAbsDiff(bestLocal, this.el)) {
+    //     // But the frame element is better
+    //     return $(bestFrame.frame);
+    //   } else {
+    //     // Child element is better, or there's no frame element
+    //     return bestLocal;
+    //   }
+    // } else if (bestFrame) {
+    //   // No child element, but there is a frame element.
+    //   return $(bestFrame.frame);
+    // } else {
+    //   // Nothing matches
+    //   return null;
+    // }
+  }
+
+  async capture(options: CaptureOptions = {}): Promise<string> {
+    options = _.extend({
+      threshold: CAPTURE_THRESHOLD
+    }, options);
+
+    // Load the element
+    await this.ensureLoaded();
+
+    // Find the best child
+    const target: ?Element = await this.findBestCaptureTarget(options);
+
+    console.log(this.localId, this.el, 'got a target', target);
+
+    // Maybe we don't actually want to capture the target
+    if (!target) {
+      throw new FWError('No graphic element!');
+    } else if (outerArea(target) < CAPTURE_THRESHOLD.area) {
+      throw new FWError('Skipping graphic that is too small');
+    }
+
+    console.log(this.localId, this.el, 'ready to capture', target);
+
+    // Capture that child
+    return this.captureTarget(target, options);
+  }
+
   setStyle() {
+    if (this.screenshotState == 'active') {
+      for (const cl of ALL_CLASSES) {
+        this.el.classList.remove(cl);
+      }
+      return;
+    }
+
     if (this.screenState == 'started') {
       this.$el.removeClass(CLASS_SCREEN_DONE);
       this.$el.addClass(CLASS_SCREEN_PROGRESS);
@@ -247,7 +443,7 @@ export class AdElement {
       this.$el.removeClass(CLASS_NOTAD);
       this.$el.addClass(CLASS_ISAD);
 
-      if (this.recordedAd) {
+      if (this.recordedAdState == 'done') {
         this.$el.removeClass(CLASS_NOTRECORDED);
         this.$el.addClass(CLASS_RECORDED);
       } else {
@@ -263,13 +459,13 @@ export class AdElement {
   }
 
   markRecorded() {
-    this.recordedAd = true;
+    this.recordedAdState = 'done';
     this.setStyle();
   }
 
   toApiJson() {
     return {
-      id: this.id,
+      localId: this.localId,
       topUrl: this.topUrl,
       html: this.adHtml,
       mediaType: this.mediaType,

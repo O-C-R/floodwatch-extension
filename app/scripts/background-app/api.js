@@ -66,7 +66,7 @@ export class FWApiClient extends APIClient {
     };
 
     // TODO: actually send the ads
-    console.log(JSON.stringify(payload));
+    // console.log(JSON.stringify(payload));
 
     return true;
   }

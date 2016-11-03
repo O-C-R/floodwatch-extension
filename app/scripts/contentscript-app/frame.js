@@ -6,10 +6,10 @@ import MutationSummary from 'mutation-summary';
 import * as _ from 'lodash';
 
 import {AdElement} from './ad';
-import {capture} from './capture';
 
+import {ensureFrameLoaded} from '../core/dom';
 import {ELEMENT_SELECTOR_FRAMES, ELEMENT_SELECTOR_NO_FRAMES} from '../core/constants';
-import {FWError, promiseTimeout, pollUntil, tryUntil, generateUUID, TimeoutError} from '../core/util';
+import {FWError, promiseTimeout, tryRepeat, generateUUID, TimeoutError} from '../core/util';
 
 type MutationElementResponse = {
   added: Array<Element>;
@@ -20,7 +20,7 @@ type MutationElementResponse = {
   getOldParentNode?: (e: Element) => Element;
 };
 
-type WindowRequestType = 'setRegistered' | 'ping' | 'outerAreas' | 'isSelfAd' | 'startScreen';
+type WindowRequestType = 'setRegistered' | 'ping' | 'childrenDoneLoading' | 'startScreen';
 
 export type WindowRequest = {
   source: 'floodwatch';
@@ -54,10 +54,9 @@ export type OuterAreasRequestPayload = {
 
 export type OuterAreasResponsePayload = Object;
 
-export type IsSelfAdRequestPayload = {};
-export type IsSelfAdResponsePayload = {
-  isAd: ?boolean;
-  error?: string;
+export type ChildrenDoneLoadingRequestPayload = {};
+export type ChildrenDoneLoadingResponsePayload = {
+  done: boolean
 };
 
 export type StartScreenRequestPayload = {};
@@ -69,14 +68,14 @@ type WindowRequestPayload =
   WindowSetRegisteredRequestPayload
   | PingRequestPayload
   | OuterAreasRequestPayload
-  | IsSelfAdRequestPayload
+  | ChildrenDoneLoadingRequestPayload
   | StartScreenRequestPayload;
 
 type WindowResponsePayload =
   WindowSetRegisteredResponsePayload
   | PingResponsePayload
   | OuterAreasResponsePayload
-  | IsSelfAdResponsePayload
+  | ChildrenDoneLoadingResponsePayload
   | StartScreenResponsePayload;
 
 type WindowRequestOptions = {
@@ -94,6 +93,7 @@ export class Frame {
 
   isTop: boolean;
   safeToScreen: boolean;
+  lastScrollTime: Date;
 
   registeredWithParent: boolean;
   registeredWithExtension: boolean;
@@ -109,6 +109,13 @@ export class Frame {
 
     this.isTop = this.view.isTop || false;
     this.safeToScreen = false;
+
+    this.lastScrollTime = new Date();
+    this.view.addEventListener('scroll', () => this.lastScrollTime = new Date());
+
+    this.doc.addEventListener('readystatechange', () => {
+      console.log('frame', this.id, 'readystatechange', this.doc.readyState);
+    });
 
     this.registeredWithExtension = false;
     this.registeredWithParent = false;
@@ -130,9 +137,7 @@ export class Frame {
 
   async screenElement(el: Element, topUrl: string): Promise<boolean> {
     let isAd = false;
-
-    const $el = $(el);
-    const adEl: AdElement = new AdElement($el, topUrl);
+    const adEl: AdElement = new AdElement(this, el, topUrl);
 
     try {
       isAd = await adEl.screen(this);
@@ -142,7 +147,7 @@ export class Frame {
 
     if (isAd) {
       try {
-        const data = await capture(this, $el, {});
+        const data = await adEl.capture();
         adEl.markRecorded();
         console.log('Captured!', el, data.length);
 
@@ -159,35 +164,46 @@ export class Frame {
   }
 
   async screenFrame(el: HTMLIFrameElement, topUrl: string) {
+
     const isAd = await this.screenElement(el, topUrl);
 
     // Propagate down the screen if it's an iframe
     if (!isAd) {
-      console.log(this.id, 'decided it was not an ad', this.doc);
+      console.log(this.id, 'decided it was not an ad', el);
 
       // const loadedState = el.readyState
       // $FlowIssue: contentWindow is valid
       const win: WindowProxy = el.contentWindow;
       this.notifyChildToScreen(win);
     } else {
-      console.log(this.id, 'decided it was an ad', this.doc);
+      console.log(this.id, 'decided it was an ad', el);
     }
   }
 
   async handleIFrameMutation(el: Element) {
+    // Cast
+    const iframe = ((el: any): HTMLIFrameElement);
+
+    // Register frame first
     try {
-      // Cast
-      const iframe = ((el: any): HTMLIFrameElement);
-
-      // Register frame first
+      console.log(this.id, 'going to register iframe', iframe);
       const registered = await this.registerChild(el);
-
-      // If we're okay to screen, do it.
-      if (this.safeToScreen) {
-        await this.screenFrame(iframe, this.topUrl);
-      }
+      console.log(this.id, 'did register', iframe);
     } catch (e) {
       console.error(this.id, 'error registering iframe', el, e);
+    }
+
+    if (this.safeToScreen) {
+      // If we're okay to screen, do it.
+      try {
+        console.log(this.id, 'going to screen iframe', iframe);
+        await this.screenFrame(iframe, this.topUrl);
+        console.log(this.id, 'did screen iframe', iframe);
+      } catch (e) {
+        console.error(this.id, 'error screening iframe', el, e);
+      }
+    } else {
+      console.log(this.id, 'not ready to screen iframe', iframe);
     }
   }
 
@@ -204,7 +220,7 @@ export class Frame {
 
     const observer = new MutationSummary({
       callback: (a: MutationElementResponse[]) => {
-        console.log('GOT IFRAME MUTATION');
+        console.log('GOT IFRAME MUTATION', a);
 
         const addedRes: MutationElementResponse = a[0];
         const changedRes: ?MutationElementResponse = a[0];
@@ -212,10 +228,9 @@ export class Frame {
 
         // Start pinging new visible iframes
         for (const el of addedRes.added) {
-          if ($(el).is(':visible')) {
-            // handled.add(el);
-            this.handleIFrameMutation(el);
-          }
+          // handled.add(el);
+          // TODO: can we skip some invisible elements here?
+          this.handleIFrameMutation(el);
         }
 
         // Wait for past invisible iframes to be made visible
@@ -273,6 +288,7 @@ export class Frame {
     elems.toArray().map((el) => promises.push(this.screenElement(el, topUrl)));
 
     const frames = $(ELEMENT_SELECTOR_FRAMES);
+    console.log(this.id, 'has child frames', frames.toArray());
     frames.toArray().map((el) => promises.push(this.screenFrame(el, topUrl)));
 
     return Promise.all(promises);
@@ -350,72 +366,87 @@ export class Frame {
     //   }, 100, 5000);
     // }
 
-    // $FlowIssue: chrome responds to contentWindow
-    let win: WindowProxy = el.contentWindow;
+    // FlowIssue: chrome responds to contentWindow
+    // let win: WindowProxy = el.contentWindow;
+    // // if (!win) {
+    // //   console.log(this.id, 'waiting to load', el);
+    // //   await new Promise(function(resolve) {
+    // //     $(el).on('load', resolve);
+    // //   });
+    // //   console.log(this.id, 'got load of', el);
+    // //
+    // //   // FlowIssue: chrome responds to contentWindow
+    // //   win = el.contentWindow;
+    // // }
+    //
     // if (!win) {
-    //   console.log(this.id, 'waiting to load', el);
+    //   console.error(el, 'did not get a window quickly');
+    //   return false;
+    // }
+    //
+    // let doc: Document = win.document;
+    // if (!doc || !doc.readyState) {
+    //   console.log(this.id, 'waiting for doc to load', el);
     //   await new Promise(function(resolve) {
     //     $(el).on('load', resolve);
     //   });
-    //   console.log(this.id, 'got load of', el);
-    //
-    //   // FlowIssue: chrome responds to contentWindow
-    //   win = el.contentWindow;
+    //   doc = win.document;
     // }
+    // if (!doc) {
+    //   console.error(el, 'did not get a document quickly');
+    //   return false;
+    // }
+    //
+    // console.log(this.id, 'ready to ping', el, win, doc, doc.readyState);
 
-    if (!win) {
-      console.error(el, 'did not get a window quickly');
-      return false;
-    }
-
-    let doc: Document = win.document;
-    if (!doc || !doc.readyState) {
-      console.log(this.id, 'waiting for doc to load', el);
-      await new Promise(function(resolve) {
-        $(el).on('load', resolve);
-      });
-      doc = win.document;
-    }
-    if (!doc) {
-      console.error(el, 'did not get a document quickly');
-      return false;
-    }
-
-    console.log(this.id, 'ready to ping', el, win, doc, doc.readyState);
-
-    let lastError;
+    let lastError, overallError;
+    let childFrameId = null;
+    let i = 0;
 
     try {
-      const registered = await tryUntil(async () => {
+      const registered = await tryRepeat(async () => {
+        ++i;
+
+        // $FlowIssue: chrome responds to contentWindow
+        let win: WindowProxy = el.contentWindow;
+        if (!win) {
+          return false;
+        }
+
         if ($(el).attr('data-fw-frame-id')) {
-          console.log(this.id, 'DONE REGISTERING (back)', win, doc);
+          console.log(this.id, 'DONE REGISTERING (back)', win, i);
           return Promise.resolve(true);
         }
 
         try {
-          // console.log(this.id, 'trying to ping', el);
-          const pingResponse: WindowRequest = await this.ping(win, { timeout: 1000 });
+          console.log(this.id, 'trying to ping', el, win);
+          const pingResponse: WindowRequest = await this.ping(win, { timeout: 10000 });
+          childFrameId = pingResponse.srcFrameId;
 
-          $(el).attr('data-fw-frame-id', pingResponse.srcFrameId);
+          console.log(this.id, 'setting id')
+          $(el).attr('data-fw-frame-id', childFrameId);
           console.log(this.id, 'has child', win, 'with id', pingResponse.srcFrameId);
 
-          await this.setRegistered(win);
-
-          console.log(this.id, 'DONE REGISTERING', el);
+          console.log(this.id, 'DONE REGISTERING', el, i);
           return true;
         } catch (e) {
           lastError = e;
         }
-      }, 200, 10, 60000);
+      }, 5, 1000);
 
       if (registered) {
+        // $FlowIssue: chrome responds to contentWindow
+        let win: WindowProxy = el.contentWindow;
+        console.log(this.id, 'setting registered', el, childFrameId);
+        await this.setRegistered(win);
+        console.log(this.id, 'done setting registered', el, childFrameId);
         return true;
       }
     } catch (e) {
-
+      overallError = e;
     }
 
-    console.error(this.id, 'could not register', el, win, doc, doc.readyState, lastError);
+    console.error(this.id, 'could not register', el, lastError, overallError, i);
     return false;
   }
 
@@ -459,48 +490,66 @@ export class Frame {
     return { done: true };
   }
 
-  async isSelfAd(options: WindowRequestOptions = {}): Promise<boolean> {
-    const res = await this.requestWindow(this.view.parent, 'isSelfAd', {}, options);
-    const payload: IsSelfAdResponsePayload = ((res.payload: any): IsSelfAdResponsePayload);
-
-    return payload.isAd === true;
-  }
-
-  async isSelfAdHandler(req: WindowRequest): Promise<IsSelfAdResponsePayload> {
-    const frameId = req.srcFrameId;
-    const iframe = this.getFrameByFWID(frameId);
-
-    // Unless we're at the top, you have to keep going up the tree...
-    if (!this.isTop) {
-      if (await this.isSelfAd()) {
-        return { isAd: true };
-      }
-    }
-
-    if (!iframe || iframe.length == 0) {
-      // Maybe we weren't able to establish contact, so who knows if you're an ad.
-      return { isAd: undefined };
-    }
-
-    try {
-      // Wait a full second to see if the ad has been screened
-      await pollUntil(() => {
-        return iframe.hasClass('floodwatch-screen-done');
-      }, 50, 1000);
-
-      // Check for the ad class
-      return { isAd: iframe.hasClass('floodwatch-isad') }
-    } catch (e) {
-      return { isAd: undefined, error: e.msg };
-    }
-  }
-
   // async queryOuterAreasOfElementsMatching(win: WindowProxy, selector: string, options: WindowRequestOptions = {}): Promise<{ areas: number[] }> {
   //   const res = await this.requestWindow(win, 'outerAreas', { selector }, options)
   //   const payload: OuterAreasResponsePayload = res.payload;
   //
   //   return payload.areas;
   // }
+
+  areChildrenDoneLoading(el: HTMLIFrameElement, options: WindowRequestOptions = {}): Promise<WindowRequest> {
+    if (!$(el).data('fw-frame-id')) {
+      return Promise.reject('IFrame not registered.');
+    }
+
+    console.log(this.id, 'finding out if', el, 'has loaded children');
+    console.log(this.id, $(el).html());
+
+    // $FlowIssue: contentWindow is valid
+    const win: WindowProxy = el.contentWindow;
+    return this.requestWindow(win, 'childrenDoneLoading', {}, options);
+  }
+
+  async areChildrenDoneLoadingHandler(req: WindowRequest): Promise<ChildrenDoneLoadingResponsePayload> {
+    const children: HTMLIFrameElement[] = $(ELEMENT_SELECTOR_FRAMES).toArray();
+
+    console.log(this.id, 'going to wait for', children, 'to load');
+
+    // Block until all the frames are loaded
+    const accessible = await Promise.all(children.map(c => ensureFrameLoaded(c)));
+    const crossOriginChildren = children.filter((c, i) => !accessible[i]);
+
+    console.log(this.id, 'going to try to ping', crossOriginChildren);
+
+    const crossOriginPromises = crossOriginChildren
+      .map(c => {
+        // $FlowIssue: contentwindow1!!!
+        return this.ping(c.contentWindow)
+          .catch(() => { console.error(this.id, 'error pinging', c)})
+          .then(() => { console.log(this.id, 'success pinging', c)})
+      });
+
+    await Promise.all(crossOriginPromises);
+
+    // Only ping registered children
+    const registered = children.filter(el => $(el).data('fw-frame-id') != null);
+
+    console.log(this.id, 'has children with attrs',
+      children,
+      children.map(c => $(c).data('fw-frame-id')),
+      children.map(c => c.outerHTML),
+      children.map(c => c.innerHTML)
+    )
+
+    console.log(this.id, 'going to ping registered children', registered);
+
+    // Wait for children to respond to ping
+    await Promise.all(registered.map(c => this.areChildrenDoneLoading(c)));
+
+    console.log(this.id, 'all done with registered children', registered);
+
+    return { done: true };
+  }
 
   requestWindow(win: WindowProxy, type: WindowRequestType, payload: WindowRequestPayload, { timeout }: WindowRequestOptions = {}): Promise<WindowRequest> {
     const requestId = generateUUID();
@@ -531,7 +580,9 @@ export class Frame {
 
     this.requestCallbacks[requestId] = { resolve, reject };
 
-    // console.log(this.id, 'sending req', req, 'to', win);
+    if (!win || !win.postMessage) {
+      console.error('doomed', this.id, 'sending req', req, 'to', win);
+    }
     try {
       win.postMessage(req, '*');
     } catch (e) {
@@ -574,12 +625,12 @@ export class Frame {
     const handlers: { [key: WindowRequestType]: (r: WindowRequest) => Promise<WindowResponsePayload> } = {
       'setRegistered': this.setRegisteredHandler,
       'ping': this.pingHandler,
-      'isSelfAd': this.isSelfAdHandler,
-      'startScreen': this.startScreenHandler
+      'startScreen': this.startScreenHandler,
+      'childrenDoneLoading': this.areChildrenDoneLoadingHandler
     };
 
     if (!handlers[request.type]) {
-      console.log(`No handler for request type ${request.type}`, request);
+      console.error(`No handler for request type ${request.type}`, request);
       return;
     }
 
@@ -598,7 +649,7 @@ export class Frame {
     const callbacks = this.requestCallbacks[response.requestId];
 
     if (!callbacks) {
-      console.log('No callbacks for requestId', response.requestId);
+      console.error('No callbacks for requestId', response.requestId);
       return;
     }
 

@@ -1,6 +1,7 @@
 // @flow
 
 export class TimeoutError extends Error {}
+export class RepeatError extends Error {}
 export class FWError extends Error {}
 
 export function delayedPromise(time?: ?number): Promise<void> {
@@ -16,10 +17,8 @@ export function delayedPromise(time?: ?number): Promise<void> {
 }
 
 export function promiseTimeout<T>(promise: Promise<T>, timeout?: ?number, msg?: string): Promise<T> {
-  const stack = new Error().stack;
-
   const timeoutPromise = delayedPromise(timeout)
-    .then(function() { throw new TimeoutError(msg || stack || 'Timeout'); });
+    .then(function() { throw new TimeoutError(msg || 'Timeout'); });
   return Promise.race([promise,timeoutPromise]);
 }
 
@@ -54,6 +53,23 @@ export function pollUntil<T>(cb: <T>() => ?T, interval: number, timeout: number)
     });
 }
 
+export async function tryRepeat<T>(cb: <T>() => Promise<?T>, times: number, delay?: number): Promise<T> {
+  for (let i = 0; i < times; ++i) {
+    try {
+      const res = await cb();
+      if (res) {
+        return res;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    await delayedPromise(delay);
+  }
+
+  throw new RepeatError('RepeatError');
+}
+
 // Swallows errors
 export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: number, timeout: number): Promise<T> {
   let timedOut = false;
@@ -86,10 +102,6 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
       timedOut = true;
       throw e;
     });
-}
-
-export function outerArea($el: JQuery) {
-  return $el.outerWidth() * $el.outerHeight();
 }
 
 // Adapted from https://gist.github.com/jed/982883

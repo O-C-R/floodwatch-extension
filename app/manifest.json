@@ -14,9 +14,8 @@
     ]
   },
   "permissions": [
+    "<all_urls>",
     "tabs",
-    "http://*/*",
-    "https://*/*",
     "background",
     "notifications",
     "pageCapture"

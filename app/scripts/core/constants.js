@@ -20,3 +20,7 @@ export const ELEMENT_SELECTOR_FRAMES = ['frame', 'iframe'].join(',');
 export const ELEMENT_SELECTOR_NO_FRAMES = ['img', 'picture', 'audio', 'video', 'object', 'embed'].join(',');
 
 export const CAPTURE_THRESHOLD = { ratio: 0.5, area: 16 };
+export const MIN_ELEM_AREA = 4;
+
+export const SCROLL_WAIT_TIME = 50;
+export const FRAME_LOAD_WAIT_TIME = 200;

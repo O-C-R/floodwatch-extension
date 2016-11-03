@@ -2,6 +2,72 @@
 
 import $ from 'jquery';
 
+import {MIN_ELEM_AREA} from './constants';
+
+type JQElem = JQuery | Element;
+
+
+export type Threshold = {
+  ratio: number;
+  area: number;
+};
+
+export function outerArea(el: JQElem) {
+  const $el = $(el);
+  return $el.outerWidth() * $el.outerHeight();
+}
+
+function outerAreaDiff(a: JQElem, b: JQElem) {
+  return outerArea(a) - outerArea(b);
+}
+
+function outerAreaAbsDiff(a: JQElem, b: JQElem): number {
+  return Math.abs(outerArea(a) - outerArea(b));
+}
+
+function outerAreaAbsDiffRatio(a: JQElem, b: JQElem): number {
+  return outerAreaAbsDiff(a, b) / outerArea(b);
+}
+
+// TODO: cache area
+function sortByOuterAreaAbsDiff(el: JQElem): (a: Element, b: Element) => number {
+  return function(a: Element, b: Element): number {
+    return outerAreaAbsDiff(a, el) - outerAreaAbsDiff(b, el);
+  }
+}
+
+function passesThreshold(found: JQElem, el: JQElem, threshold: ?Threshold): boolean {
+  if (!threshold) return true;
+
+  return outerAreaAbsDiffRatio(found, el) <= threshold.ratio &&
+    outerArea(found) >= threshold.area;
+}
+
+export function findSelfOrChildBySize(el: Element, selector: string, threshold?: Threshold): ?Element {
+  const $el = $(el);
+  let found: ?Element = null;
+
+  if ($el.is(selector)) {
+    // if $el matches the selector, just return el
+    found = el;
+  } else if (outerArea(el) < MIN_ELEM_AREA) {
+    // if it's really small, just find the biggest element matching the selector
+    const sorted = $el.find(selector).toArray().sort(outerAreaDiff);
+    found = sorted[sorted.length - 1];
+  } else {
+    // otherwise, find the element whose area is closest to el
+    const sorted = $el.find(selector).toArray().sort(sortByOuterAreaAbsDiff(el));
+    found = sorted[0];
+  }
+
+  // If it's not above the threshold, then ignore it.
+  if (found != null && threshold && !passesThreshold(found, el, threshold)) {
+    found = null;
+  }
+
+  return found;
+}
+
 export class Offset {
   top: number;
   left: number;
@@ -61,7 +127,7 @@ export class Rect {
     }, other.window);
   }
 
-  static forElement(el: HTMLElement): ElementRect {
+  static forElement(el: Element): ElementRect {
     const doc = el.ownerDocument;
     const win = doc.defaultView;
     const scroll = Offset.forWindowScroll(win);
@@ -156,7 +222,7 @@ export class ElementRect extends Rect {
   // should be kept separate from scroll in the top document, since scrolling
   // the top does not scroll the subdocument. However, this is probably
   // sufficient for how this method is actually used in the code.
-  relativeToElement(el: HTMLElement): ElementRect {
+  relativeToElement(el: Element): ElementRect {
     const other = Rect.forElement(el);
     return this.offsetted(other.offset);
   }
