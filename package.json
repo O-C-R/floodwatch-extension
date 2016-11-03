@@ -7,7 +7,8 @@
   "scripts": {
     "watch": "gulp watch",
     "build": "gulp build",
-    "clean": "gulp clean"
+    "clean": "gulp clean",
+    "package": "gulp package"
   },
   "devDependencies": {
     "babel-core": "^6.7.2",
