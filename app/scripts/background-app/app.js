@@ -1,5 +1,7 @@
 // @flow
 
+import log from 'loglevel';
+
 import {FWApiClient} from './api';
 import {Filter} from './filter';
 import {serializeImageElement} from '../core/images';
@@ -19,9 +21,9 @@ async function loadFilter() {
     // TODO: remove
     window.filter = Filter;
 
-    console.log('Done loading filter!');
+    log.info('Done loading filter!');
   } catch (e) {
-    console.error(e);
+    log.error(e);
   }
 }
 
@@ -39,9 +41,9 @@ function onScreenElementMessage(message: Object, sendResponse: (obj: any) => voi
       urls: payload.urls || []
     });
     isAd = isAdObj === true || (isAdObj && typeof isAdObj === 'object') || false;
-    // console.log('Decided', payload, 'was an ad:', isAdObj, isAd);
+    // log.info('Decided', payload, 'was an ad:', isAdObj, isAd);
   } catch (e) {
-    console.error('Error detecting ad from message', message, e);
+    log.error('Error detecting ad from message', message, e);
     error = e;
   }
 
@@ -50,6 +52,8 @@ function onScreenElementMessage(message: Object, sendResponse: (obj: any) => voi
 
 function onCapturedAdMessage(message: Object) {
   const payload = message.payload;
+
+  log.info('Captured ad!', message);
 
   apiClient.addAd(payload);
   apiClient.sendAds(true);
@@ -69,7 +73,7 @@ function captureScreenshot(tabId: number, area: Rect): Promise<string> {
             const image = new Image();
             image.onerror = reject;
             image.onload = () => {
-              console.log(tabId, area);
+              log.info(tabId, area);
               resolve(serializeImageElement(image, area));
             };
             image.src = dataUrl;
@@ -89,18 +93,19 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
   try {
     const area = message.payload.area;
     const dataUrl = await captureScreenshot(tabId, area);
-    // console.log('GOT SCREENSHOT', area, dataUrl);
-    console.log('sending response', dataUrl.length);
+    // log.info('GOT SCREENSHOT', area, dataUrl);
+    log.info('sending response', dataUrl.length);
     sendResponse({ error: null, data: { dataUrl }})
   } catch (e) {
-    console.error('sending error', e);
+    log.error('sending error', e);
     sendResponse({ error: e.message, data: null });
   }
 }
 
+// $FlowIssue: this is a good definition
 function onChromeMessage(message: any, sender: chrome$MessageSender, sendResponse: (obj: any) => void): boolean {
-  // console.log('Got message');
-  // console.log(message, sender);
+  // log.info('Got message');
+  // log.info(message, sender);
 
   if (message.type === 'screenElement') {
     onScreenElementMessage(message, sendResponse);
@@ -109,12 +114,12 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
     onCapturedAdMessage(message);
     return false;
   } else if (message.type === 'captureScreenshot') {
-    console.log('Got message');
-    console.log(message, sender, sendResponse );
+    log.info('Got message');
+    log.info(message, sender, sendResponse );
 
     const tabId = sender.tab ? sender.tab.id : undefined;
     if (!tabId) {
-      console.error('Got message from invalid tabId', tabId);
+      log.error('Got message from invalid tabId', tabId);
       return false;
     }
 
@@ -131,6 +136,12 @@ function registerExtension() {
 }
 
 export async function main() {
+  // Debug
+  // log.setLevel(log.levels.TRACE);
+
+  // Release
+  log.setLevel(log.levels.WARN);
+
   apiClient = new FWApiClient('http://localhost:8000');
 
   registerExtension();

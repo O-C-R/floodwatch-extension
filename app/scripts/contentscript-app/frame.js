@@ -4,12 +4,14 @@
 import $ from 'jquery';
 import MutationSummary from 'mutation-summary';
 import * as _ from 'lodash';
+import log from 'loglevel';
 
 import {AdElement} from './ad';
 
 import {ensureFrameLoaded} from '../core/dom';
-import {ELEMENT_SELECTOR_FRAMES, ELEMENT_SELECTOR_NO_FRAMES} from '../core/constants';
+import {ELEMENT_SELECTOR_FRAMES, ELEMENT_SELECTOR_NO_FRAMES, CAPTURE_ERROR_MARGIN_PX} from '../core/constants';
 import {FWError, promiseTimeout, tryRepeat, generateUUID, TimeoutError} from '../core/util';
+import {findElementBySize} from '../core/shapes';
 
 type MutationElementResponse = {
   added: Array<Element>;
@@ -20,7 +22,12 @@ type MutationElementResponse = {
   getOldParentNode?: (e: Element) => Element;
 };
 
-type WindowRequestType = 'setRegistered' | 'ping' | 'childrenDoneLoading' | 'startScreen';
+type WindowRequestType =
+  'setRegistered'
+  | 'ping'
+  | 'childrenDoneLoading'
+  | 'startScreen'
+  | 'captureFillGraphic';
 
 export type WindowRequest = {
   source: 'floodwatch';
@@ -35,7 +42,6 @@ export type WindowRequest = {
 export type WindowSetRegisteredRequestPayload = {
   registered: true;
 }
-
 export type WindowSetRegisteredResponsePayload = {
   id: string;
 }
@@ -43,7 +49,6 @@ export type WindowSetRegisteredResponsePayload = {
 export type PingRequestPayload = {
   ping: true;
 }
-
 export type PingResponsePayload = {
   pong: true;
 }
@@ -51,37 +56,53 @@ export type PingResponsePayload = {
 export type OuterAreasRequestPayload = {
   selector: string;
 }
-
 export type OuterAreasResponsePayload = Object;
 
 export type ChildrenDoneLoadingRequestPayload = {};
 export type ChildrenDoneLoadingResponsePayload = {
-  done: boolean
+  done: boolean;
 };
 
 export type StartScreenRequestPayload = {};
 export type StartScreenResponsePayload = {
-  done: true
+  done: true;
 };
+
+export type CaptureFillGraphicRequestPayload = {
+  dimensions: {
+    width: number;
+    height: number;
+  }
+}
+export type CaptureFillGraphicResponsePayload = {
+  didCapture: boolean;
+}
 
 type WindowRequestPayload =
   WindowSetRegisteredRequestPayload
   | PingRequestPayload
   | OuterAreasRequestPayload
   | ChildrenDoneLoadingRequestPayload
-  | StartScreenRequestPayload;
+  | StartScreenRequestPayload
+  | CaptureFillGraphicRequestPayload;
 
 type WindowResponsePayload =
   WindowSetRegisteredResponsePayload
   | PingResponsePayload
   | OuterAreasResponsePayload
   | ChildrenDoneLoadingResponsePayload
-  | StartScreenResponsePayload;
+  | StartScreenResponsePayload
+  | CaptureFillGraphicResponsePayload;
 
 type WindowRequestOptions = {
   timeout?: number;
   nRetries?: number;
   retryDelay?: number;
+};
+
+type FrameChild = {
+  element: HTMLIFrameElement;
+  frameId?: string;
 };
 
 export class Frame {
@@ -94,6 +115,8 @@ export class Frame {
   isTop: boolean;
   safeToScreen: boolean;
   lastScrollTime: Date;
+
+  frameChildren: FrameChild[];
 
   registeredWithParent: boolean;
   registeredWithExtension: boolean;
@@ -110,11 +133,13 @@ export class Frame {
     this.isTop = this.view.isTop || false;
     this.safeToScreen = false;
 
+    this.frameChildren = [];
+
     this.lastScrollTime = new Date();
     this.view.addEventListener('scroll', () => this.lastScrollTime = new Date());
 
     this.doc.addEventListener('readystatechange', () => {
-      console.log('frame', this.id, 'readystatechange', this.doc.readyState);
+      log.info('frame', this.id, 'readystatechange', this.doc.readyState);
     });
 
     this.registeredWithExtension = false;
@@ -135,48 +160,112 @@ export class Frame {
     return frame;
   }
 
-  async screenElement(el: Element, topUrl: string): Promise<boolean> {
+  removeChildByElement(el: Element): void {
+    this.frameChildren = this.frameChildren.filter(c => c.element != el);
+  }
+
+  findChildByElement(el: Element): ?FrameChild {
+    return this.frameChildren.find(c => c.element == el);
+  }
+
+  findChildByFrameId(frameId: string): ?FrameChild {
+    return this.frameChildren.find(c => c.frameId == frameId);
+  }
+
+  async screenElement(el: Element): Promise<boolean> {
     let isAd = false;
-    const adEl: AdElement = new AdElement(this, el, topUrl);
+    const adEl: AdElement = new AdElement(this, el, this.topUrl);
 
     try {
       isAd = await adEl.screen(this);
     } catch (e) {
-      console.error('error screening', el, e);
+      log.error('error screening', el, e);
     }
 
     if (isAd) {
       try {
-        const data = await adEl.capture();
-        adEl.markRecorded();
-        console.log('Captured!', el, data.length);
-
-        this.sendMessageToBackground('capturedAd', {
-          adData: adEl.toApiJson(),
-          imgData: data
-        });
+        this.capture(adEl);
       } catch (e) {
-        console.error('error capturing', el, e);
+        log.error('error capturing', el, e);
       }
     }
 
     return isAd;
   }
 
-  async screenFrame(el: HTMLIFrameElement, topUrl: string) {
+  async capture(adEl: AdElement): Promise<void> {
+    let data;
+    try {
+      data = await adEl.capture();
+      log.info(this.id, 'Captured!', adEl.el, data.length);
+    } catch (e) {
+      log.error('Error capturing', adEl, e);
+      return;
+    }
 
-    const isAd = await this.screenElement(el, topUrl);
+    try {
+      adEl.markRecorded();
+      this.sendMessageToBackground('capturedAd', {
+        adData: adEl.toApiJson(),
+        imgData: data
+      });
+    } catch (e) {
+      log.error('Error recording capture of', adEl, e);
+    }
+  }
+
+  async addFrameChild(el: Element) {
+    // Cast
+    const iframe = ((el: any): HTMLIFrameElement);
+
+    if (this.findChildByElement(el)) {
+      throw new FWError('Frame already added!');
+    }
+
+    const frameChild: FrameChild = {
+      element: iframe
+    };
+
+    this.frameChildren.push(frameChild);
+
+    // Register frame first
+    try {
+      log.info(this.id, 'going to register iframe', iframe);
+      const registered = await this.registerChild(iframe);
+      log.info(this.id, 'did register', iframe);
+    } catch (e) {
+      log.error(this.id, 'error registering iframe', el, e);
+    }
+
+    if (this.safeToScreen) {
+      // If we're okay to screen, do it.
+      try {
+        log.info(this.id, 'going to screen iframe', iframe);
+        await this.screenFrame(iframe, this.topUrl);
+        log.info(this.id, 'did screen iframe', iframe);
+      } catch (e) {
+        log.error(this.id, 'error screening iframe', el, e);
+      }
+    } else {
+      log.info(this.id, 'not ready to screen iframe', iframe);
+    }
+
+  }
+
+  async screenFrame(el: HTMLIFrameElement) {
+
+    const isAd = await this.screenElement(el, this.topUrl);
 
     // Propagate down the screen if it's an iframe
     if (!isAd) {
-      console.log(this.id, 'decided it was not an ad', el);
+      log.info(this.id, 'decided it was not an ad', el);
 
       // const loadedState = el.readyState
       // $FlowIssue: contentWindow is valid
       const win: WindowProxy = el.contentWindow;
       this.notifyChildToScreen(win);
     } else {
-      console.log(this.id, 'decided it was an ad', el);
+      log.info(this.id, 'decided it was an ad', el);
     }
   }
 
@@ -186,24 +275,24 @@ export class Frame {
 
     // Register frame first
     try {
-      console.log(this.id, 'going to register iframe', iframe);
-      const registered = await this.registerChild(el);
-      console.log(this.id, 'did register', iframe);
+      log.info(this.id, 'going to register iframe', iframe);
+      const registered = await this.registerChild(iframe);
+      log.info(this.id, 'did register', iframe);
     } catch (e) {
-      console.error(this.id, 'error registering iframe', el, e);
+      log.error(this.id, 'error registering iframe', el, e);
     }
 
     if (this.safeToScreen) {
       // If we're okay to screen, do it.
       try {
-        console.log(this.id, 'going to screen iframe', iframe);
+        log.info(this.id, 'going to screen iframe', iframe);
         await this.screenFrame(iframe, this.topUrl);
-        console.log(this.id, 'did screen iframe', iframe);
+        log.info(this.id, 'did screen iframe', iframe);
       } catch (e) {
-        console.error(this.id, 'error screening iframe', el, e);
+        log.error(this.id, 'error screening iframe', el, e);
       }
     } else {
-      console.log(this.id, 'not ready to screen iframe', iframe);
+      log.info(this.id, 'not ready to screen iframe', iframe);
     }
   }
 
@@ -211,16 +300,16 @@ export class Frame {
     try {
       const isAd = await this.screenElement(el, this.topUrl);
     } catch (e) {
-      console.error(this.id, 'error screening', el);
+      log.error(this.id, 'error screening', el);
     }
   }
 
   startFrameMutationObserver() {
-    console.log(this.id, 'STARTING FRAME MUTATION');
+    log.info(this.id, 'STARTING FRAME MUTATION');
 
     const observer = new MutationSummary({
       callback: (a: MutationElementResponse[]) => {
-        console.log('GOT IFRAME MUTATION', a);
+        log.info('GOT IFRAME MUTATION', a);
 
         const addedRes: MutationElementResponse = a[0];
         const changedRes: ?MutationElementResponse = a[0];
@@ -237,13 +326,13 @@ export class Frame {
         // if (changedRes && changedRes.attributeChanged && changedRes.attributeChanged['display'] && changedRes.getOldAttribute) {
         //   for (const el of changedRes.attributeChanged['display']) {
         //     if (!handled.has(el) && $(el).is(':visible')) {
-        //       console.log(this.id, el, 'was made a visible iframe');
+        //       log.info(this.id, el, 'was made a visible iframe');
         //       this.handleIFrameMutation(el);
         //     }
         //   }
-        //   console.log('changed was indeed what we wanted', changedRes, a);
+        //   log.info('changed was indeed what we wanted', changedRes, a);
         // } else {
-        //   console.log('changed was not what we wanted', changedRes, a);
+        //   log.info('changed was not what we wanted', changedRes, a);
         // }
       },
 
@@ -253,7 +342,7 @@ export class Frame {
   }
 
   startElementMutationObserver() {
-    console.log(this.id, 'STARTING ELEMENT MUTATION');
+    log.info(this.id, 'STARTING ELEMENT MUTATION');
     const observer = new MutationSummary({
       callback: (a) => {
         const res: MutationElementResponse = a[0];
@@ -279,132 +368,27 @@ export class Frame {
   }
 
   screenAll() {
-    console.log(this.id, 'STARTING SCREEN');
+    log.info(this.id, 'STARTING SCREEN');
 
     const promises = [];
-    const topUrl: string = this.doc.defaultView.location.href;
 
     const elems = $(ELEMENT_SELECTOR_NO_FRAMES);
-    elems.toArray().map((el) => promises.push(this.screenElement(el, topUrl)));
+    elems.toArray().map((el: Element) => promises.push(this.screenElement(el)));
 
     const frames = $(ELEMENT_SELECTOR_FRAMES);
-    console.log(this.id, 'has child frames', frames.toArray());
-    frames.toArray().map((el) => promises.push(this.screenFrame(el, topUrl)));
+    log.info(this.id, 'has child frames', frames.toArray());
+    frames.toArray().map((el: HTMLIFrameElement) => promises.push(this.screenFrame(el)));
 
     return Promise.all(promises);
   }
 
-  // registerWithParent(): Promise<boolean> {
-  //   if (this.registeredWithParent) {
-  //     return Promise.resolve(true);
-  //   }
-  //
-  //   const payload: WindowRegistrationRequestPayload = { id: this.id };
-  //   console.log('Registering', this.id, 'with parent', this.view.parent, 'for view', this.view);
-  //
-  //   return this.requestWindow(this.view.parent, 'registerWithParent', payload)
-  //     .then((req: WindowRequest) => {
-  //       if (req.error) throw new Error(req.error);
-  //
-  //       if (req.payload && req.payload.registered) {
-  //         this.registeredWithParent = true;
-  //         return true;
-  //       } else {
-  //         throw new FWError('Could not register with parent!');
-  //       }
-  //     });
-  // }
-  //
-  // registerWithParentHandler(req: WindowRequest): Promise<WindowRegistrationResponsePayload> {
-  //   // First, see if it's already registered
-  //   const attr = `[data-fw-frame-id="${req.srcFrameId}"]`;
-  //   const frame: JQuery = $(this.doc).find(`iframe${attr},frame${attr}`);
-  //   if (frame.length > 0) {
-  //     // You're already registered with that id.
-  //     console.log(req.srcFrameId, 'already registered');
-  //     return Promise.resolve({ registered: true });
-  //   }
-  //
-  //   // Otherwise, try to find a frame that will verify the frameId
-  //   const selector = 'iframe:not([data-fw-frame-id]),frame:not([data-fw-frame-id])';
-  //   const promises = [];
-  //   let verified = false;
-  //   $(this.doc).find(selector).each((i: number, el: Element) => {
-  //     // FlowIssue: chrome responds to contentWindow
-  //     const win: WindowProxy = el.contentWindow;
-  //     // console.log(this.id, 'sending ping to el', el);
-  //     const p = this.ping(win)
-  //       .then(function(pingResponse: WindowRequest) {
-  //         if (pingResponse.srcFrameId === req.srcFrameId) {
-  //           $(el).attr('data-fw-frame-id', req.srcFrameId);
-  //           verified = true;
-  //           return;
-  //         }
-  //         return new Promise(function(){});
-  //       }).catch(function() { return new Promise(function(){}); });
-  //     promises.push(p);
-  //   });
-  //
-  //   return Promise.race(promises).then(function() { return { registered: verified } });
-  // }
-
-  async registerChild(el: Element): Promise<boolean> {
-
-    // // FlowIssue: chrome responds to contentDocument
-    // const doc: ?Document = el.contentDocument || win.document;
-    //
-    // let p = Promise.resolve();
-    // if (!doc) {
-    //   console.error('no document for', win);
-    //   return;
-    // }
-    //
-    // if (doc.readyState == 'loading') {
-    //   console.error('readystate is loading for', win);
-    //   p = pollUntil(function() {
-    //     return doc.readyState == 'interactive' || doc.readyState == 'complete';
-    //   }, 100, 5000);
-    // }
-
-    // FlowIssue: chrome responds to contentWindow
-    // let win: WindowProxy = el.contentWindow;
-    // // if (!win) {
-    // //   console.log(this.id, 'waiting to load', el);
-    // //   await new Promise(function(resolve) {
-    // //     $(el).on('load', resolve);
-    // //   });
-    // //   console.log(this.id, 'got load of', el);
-    // //
-    // //   // FlowIssue: chrome responds to contentWindow
-    // //   win = el.contentWindow;
-    // // }
-    //
-    // if (!win) {
-    //   console.error(el, 'did not get a window quickly');
-    //   return false;
-    // }
-    //
-    // let doc: Document = win.document;
-    // if (!doc || !doc.readyState) {
-    //   console.log(this.id, 'waiting for doc to load', el);
-    //   await new Promise(function(resolve) {
-    //     $(el).on('load', resolve);
-    //   });
-    //   doc = win.document;
-    // }
-    // if (!doc) {
-    //   console.error(el, 'did not get a document quickly');
-    //   return false;
-    // }
-    //
-    // console.log(this.id, 'ready to ping', el, win, doc, doc.readyState);
-
+  async registerChild(el: HTMLIFrameElement): Promise<?string> {
     let lastError, overallError;
     let childFrameId = null;
     let i = 0;
 
     try {
-      const registered = await tryRepeat(async () => {
+      childFrameId = await tryRepeat(async () => {
         ++i;
 
         // $FlowIssue: chrome responds to contentWindow
@@ -413,51 +397,56 @@ export class Frame {
           return false;
         }
 
-        if ($(el).attr('data-fw-frame-id')) {
-          console.log(this.id, 'DONE REGISTERING (back)', win, i);
-          return Promise.resolve(true);
+        let childFrameId = $(el).data('fw-frame-id');
+        if (childFrameId) {
+          log.info(this.id, 'DONE REGISTERING (back)', win, i);
+          return childFrameId;
         }
 
         try {
-          console.log(this.id, 'trying to ping', el, win);
+          log.info(this.id, 'trying to ping', el, win);
           const pingResponse: WindowRequest = await this.ping(win, { timeout: 10000 });
           childFrameId = pingResponse.srcFrameId;
 
-          console.log(this.id, 'setting id')
+          log.info(this.id, 'setting id')
           $(el).attr('data-fw-frame-id', childFrameId);
-          console.log(this.id, 'has child', win, 'with id', pingResponse.srcFrameId);
+          log.info(this.id, 'has child', win, 'with id', childFrameId);
 
-          console.log(this.id, 'DONE REGISTERING', el, i);
-          return true;
+          log.info(this.id, 'DONE REGISTERING', el, i);
+          return childFrameId;
         } catch (e) {
           lastError = e;
         }
       }, 5, 1000);
 
-      if (registered) {
+      if (childFrameId != null) {
         // $FlowIssue: chrome responds to contentWindow
         let win: WindowProxy = el.contentWindow;
-        console.log(this.id, 'setting registered', el, childFrameId);
+        log.info(this.id, 'setting registered', el, childFrameId);
         await this.setRegistered(win);
-        console.log(this.id, 'done setting registered', el, childFrameId);
-        return true;
+        log.info(this.id, 'done setting registered', el, childFrameId);
+        return childFrameId;
       }
     } catch (e) {
       overallError = e;
     }
 
-    console.error(this.id, 'could not register', el, lastError, overallError, i);
-    return false;
+    log.error(this.id, 'could not register', el, lastError, overallError, i);
+    return null;
   }
 
-  registerChildren(): Promise<boolean[]> {
+  registerChildren(): Promise<Array<?string>> {
     const selector = 'iframe:not([data-fw-frame-id]),frame:not([data-fw-frame-id])';
 
-    const promises = [];
-    $(this.doc).find(selector).each((i: number, el: Element) => {
-      const p = this.registerChild(el);
-      promises.push(p);
-    });
+    const promises = ($(this.doc).find(selector).toArray(): HTMLIFrameElement[])
+      .map((el: Element) => { (async () => {
+        const iframeElement = ((el: any): HTMLIFrameElement);
+        try {
+          return this.registerChild(iframeElement);
+        } catch (e) {
+          // Ignore
+        }
+      })(); });
 
     return Promise.all(promises);
   }
@@ -472,12 +461,12 @@ export class Frame {
   }
 
   ping(win: WindowProxy, options: WindowRequestOptions = {}): Promise<WindowRequest> {
-    // console.log(this.id, 'sending ping to win', win);
+    // log.info(this.id, 'sending ping to win', win);
     return this.requestWindow(win, 'ping', { ping: true }, options);
   }
 
   pingHandler(req: WindowRequest): Promise<PingResponsePayload> {
-    // console.log(this.id, 'sending pong for req', req.requestId);
+    // log.info(this.id, 'sending pong for req', req.requestId);
     return Promise.resolve({ pong: true });
   }
 
@@ -497,13 +486,58 @@ export class Frame {
   //   return payload.areas;
   // }
 
-  areChildrenDoneLoading(el: HTMLIFrameElement, options: WindowRequestOptions = {}): Promise<WindowRequest> {
-    if (!$(el).data('fw-frame-id')) {
-      return Promise.reject('IFrame not registered.');
+  async captureFillGraphic(el: HTMLIFrameElement, dimensions: { width: number, height: number }, options: WindowRequestOptions = {}): Promise<boolean> {
+    // if (!$(el).data('fw-frame-id')) {
+    //   return Promise.reject('IFrame not registered.');
+    // }
+
+    try {
+      // $FlowIssue: contentWindow is valid
+      const win: WindowProxy = el.contentWindow;
+      const res = await this.requestWindow(win, 'captureFillGraphic', { dimensions }, options);
+
+      const resCapture = ((res.payload: any): CaptureFillGraphicResponsePayload);
+      return resCapture.didCapture;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async captureFillGraphicHandler(req: WindowRequest): Promise<CaptureFillGraphicResponsePayload> {
+    const dims = ((req.payload: any): CaptureFillGraphicRequestPayload).dimensions;
+
+    log.info(this.id, 'got req to find child of size', dims);
+
+    const childElems = $(ELEMENT_SELECTOR_NO_FRAMES).toArray();
+    const bestChildElem = findElementBySize(childElems, dims);
+
+    if (bestChildElem) {
+      log.info(this.id, 'found a child of the right size');
+      const adEl: AdElement = new AdElement(this, bestChildElem, this.topUrl);
+      await this.capture(adEl);
+
+      return { didCapture: true };
     }
 
-    console.log(this.id, 'finding out if', el, 'has loaded children');
-    console.log(this.id, $(el).html());
+    log.info(this.id, 'has no graphics of the right size');
+
+    const childFrames: HTMLIFrameElement[] = $(ELEMENT_SELECTOR_FRAMES).toArray();
+    const registered = childFrames.filter(el => $(el).data('fw-frame-id') != null);
+
+    for (const child of registered) {
+      log.info(this.id, 'trying to find a good child in', child);
+      const didCapture = await this.captureFillGraphic(child, dims);
+      if (didCapture) {
+        return { didCapture: true };
+      }
+    }
+
+    return { didCapture: false };
+  }
+
+  areChildrenDoneLoading(el: HTMLIFrameElement, options: WindowRequestOptions = {}): Promise<WindowRequest> {
+    log.info(this.id, 'finding out if', el, 'has loaded children');
+    log.info(this.id, $(el).html());
 
     // $FlowIssue: contentWindow is valid
     const win: WindowProxy = el.contentWindow;
@@ -513,40 +547,48 @@ export class Frame {
   async areChildrenDoneLoadingHandler(req: WindowRequest): Promise<ChildrenDoneLoadingResponsePayload> {
     const children: HTMLIFrameElement[] = $(ELEMENT_SELECTOR_FRAMES).toArray();
 
-    console.log(this.id, 'going to wait for', children, 'to load');
+    log.info(this.id, 'going to wait for', children, 'to load');
 
     // Block until all the frames are loaded
     const accessible = await Promise.all(children.map(c => ensureFrameLoaded(c)));
     const crossOriginChildren = children.filter((c, i) => !accessible[i]);
 
-    console.log(this.id, 'going to try to ping', crossOriginChildren);
+    log.info(this.id, 'going to try to ping', crossOriginChildren);
 
-    const crossOriginPromises = crossOriginChildren
-      .map(c => {
-        // $FlowIssue: contentwindow1!!!
-        return this.ping(c.contentWindow)
-          .catch(() => { console.error(this.id, 'error pinging', c)})
-          .then(() => { console.log(this.id, 'success pinging', c)})
+    const crossOriginPromises: Array<Promise<boolean>> = crossOriginChildren
+      .map(async c => {
+        try {
+          // $FlowIssue: contentwindow1!!!
+          await this.ping(c.contentWindow);
+          log.info(this.id, 'success pinging', c)
+          return true;
+        } catch (e) {
+          log.error(this.id, 'error pinging', c);
+        }
+        return false;
       });
 
-    await Promise.all(crossOriginPromises);
+    const responses = await Promise.all(crossOriginPromises);
 
     // Only ping registered children
-    const registered = children.filter(el => $(el).data('fw-frame-id') != null);
+    const respondingCrossOrigin = crossOriginChildren.filter((el, i) => responses[i]);
+    const responding = children.filter(c => !crossOriginChildren.includes(c) || respondingCrossOrigin.includes(c));
 
-    console.log(this.id, 'has children with attrs',
+    log.info(this.id, 'has children with attrs',
       children,
-      children.map(c => $(c).data('fw-frame-id')),
       children.map(c => c.outerHTML),
       children.map(c => c.innerHTML)
     )
 
-    console.log(this.id, 'going to ping registered children', registered);
+    log.info(this.id, 'going to ping responding children', responding);
 
     // Wait for children to respond to ping
-    await Promise.all(registered.map(c => this.areChildrenDoneLoading(c)));
+    await Promise.all(responding.map(c => {
+      return this.areChildrenDoneLoading(c, { timeout: 1000 })
+        .catch((e) => { /* ignore */ });
+    }));
 
-    console.log(this.id, 'all done with registered children', registered);
+    log.info(this.id, 'all done with responding children', responding);
 
     return { done: true };
   }
@@ -564,7 +606,8 @@ export class Frame {
     };
 
     // TODO: don't allow empty fn
-    let resolve: Function = function(){}, reject: Function = function(){};
+    let resolve: Function = function(){};
+    let reject: Function = function(){};
     const promise = new Promise((resolveFn, rejectFn) => {
       resolve = resolveFn;
       reject = rejectFn;
@@ -580,9 +623,6 @@ export class Frame {
 
     this.requestCallbacks[requestId] = { resolve, reject };
 
-    if (!win || !win.postMessage) {
-      console.error('doomed', this.id, 'sending req', req, 'to', win);
-    }
     try {
       win.postMessage(req, '*');
     } catch (e) {
@@ -603,7 +643,7 @@ export class Frame {
       payload, error
     };
 
-    console.log(this.id, 'sending res', res, 'to', win);
+    log.info(this.id, 'sending res', res, 'to', win);
     win.postMessage(res, '*');
   }
 
@@ -611,7 +651,7 @@ export class Frame {
     if (!event.data) return;
     if (!event.data.source || event.data.source != 'floodwatch') return;
 
-    console.log(this.id, this.doc, 'got FW windowMessage', event);
+    log.info(this.id, this.doc, 'got FW windowMessage', event);
 
     const message: WindowRequest = ((event.data: any): WindowRequest);
     if (message.isRequest) {
@@ -626,11 +666,12 @@ export class Frame {
       'setRegistered': this.setRegisteredHandler,
       'ping': this.pingHandler,
       'startScreen': this.startScreenHandler,
-      'childrenDoneLoading': this.areChildrenDoneLoadingHandler
+      'childrenDoneLoading': this.areChildrenDoneLoadingHandler,
+      'captureFillGraphic': this.captureFillGraphicHandler
     };
 
     if (!handlers[request.type]) {
-      console.error(`No handler for request type ${request.type}`, request);
+      log.error(`No handler for request type ${request.type}`, request);
       return;
     }
 
@@ -649,7 +690,7 @@ export class Frame {
     const callbacks = this.requestCallbacks[response.requestId];
 
     if (!callbacks) {
-      console.error('No callbacks for requestId', response.requestId);
+      log.error('No callbacks for requestId', response.requestId);
       return;
     }
 

@@ -1,8 +1,7 @@
 // @flow
 
-Error.stackTraceLimit=Infinity;
-
 import $ from 'jquery';
+import log from 'loglevel';
 
 import {Frame} from './contentscript-app/frame';
 import {promiseTimeout, tryUntil} from './core/util';
@@ -10,11 +9,16 @@ import {promiseTimeout, tryUntil} from './core/util';
 let frame: Frame;
 let frameId = 'none';
 
+window.addEventListener('unhandledrejection', event => {
+  console.error('unhandledrejection');
+  console.error(event);
+});
+
 function attachListener() {
   const msgListener = frame.onWindowMessage.bind(frame);
   setInterval(function setupListener() {
     if (!$(document.body).data('fw-frame-id')) {
-      console.log(frameId, 'document body not set in', document);
+      log.info(frameId, 'document body not set in', document);
 
       window.fwFrame = frame;
       $(document.body).attr('data-fw-frame-id', frame.id);
@@ -27,14 +31,19 @@ function attachListener() {
 
 async function start() {
   try {
+    // Debug
+    // log.setLevel(log.levels.TRACE);
+    // Release
+    log.setLevel(log.levels.WARN);
+
     frame = new Frame(document);
     frameId = frame.id;
 
-    console.log(`${frame.id} created in document`, document);
+    log.info(`${frame.id} created in document`, document);
     attachListener();
 
     if (window.isTop) {
-      console.log(`TOP FRAME: ${frame.id}`);
+      log.info(`TOP FRAME: ${frame.id}`);
     }
 
     try {
@@ -47,9 +56,9 @@ async function start() {
     // Only start for the top frame.
     if (window.isTop) {
       $(document).ready(async () => {
-        console.log(`${frame.id} screening...`);
+        log.info(`${frame.id} screening...`);
         await frame.startScreen();
-        console.log(`${frame.id} done screening!`);
+        log.info(`${frame.id} done screening!`);
       });
     }
   } catch (e) {

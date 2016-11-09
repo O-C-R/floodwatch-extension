@@ -6,6 +6,10 @@ import {MIN_ELEM_AREA} from './constants';
 
 type JQElem = JQuery | Element;
 
+export type RectSize = {
+  width: number;
+  height: number;
+}
 
 export type Threshold = {
   ratio: number;
@@ -17,30 +21,35 @@ export function outerArea(el: JQElem) {
   return $el.outerWidth() * $el.outerHeight();
 }
 
-function outerAreaDiff(a: JQElem, b: JQElem) {
-  return outerArea(a) - outerArea(b);
-}
-
-function outerAreaAbsDiff(a: JQElem, b: JQElem): number {
-  return Math.abs(outerArea(a) - outerArea(b));
-}
-
-function outerAreaAbsDiffRatio(a: JQElem, b: JQElem): number {
-  return outerAreaAbsDiff(a, b) / outerArea(b);
-}
-
-// TODO: cache area
-function sortByOuterAreaAbsDiff(el: JQElem): (a: Element, b: Element) => number {
-  return function(a: Element, b: Element): number {
-    return outerAreaAbsDiff(a, el) - outerAreaAbsDiff(b, el);
+export function elementSize(el: JQElem) {
+  return {
+    width: $(el).outerWidth(),
+    height: $(el).outerHeight()
   }
 }
 
-function passesThreshold(found: JQElem, el: JQElem, threshold: ?Threshold): boolean {
-  if (!threshold) return true;
+function sizeAbsDiff(el: Element, sizeTarget: RectSize) {
+  return Math.sqrt(
+    Math.pow(el.clientWidth - sizeTarget.width, 2)
+    + Math.pow(el.clientHeight - sizeTarget.height, 2)
+  );
+}
 
-  return outerAreaAbsDiffRatio(found, el) <= threshold.ratio &&
-    outerArea(found) >= threshold.area;
+function filterBySizeAbsDiff(sizeTarget: RectSize, threshold: number): (a: Element) => boolean {
+  return function(a: Element,): boolean {
+    return sizeAbsDiff(a, sizeTarget) < threshold;
+  }
+}
+
+function sortBySizeAbsDiff(sizeTarget: RectSize): (a: Element, b: Element) => number {
+  return function(a: Element, b: Element): number {
+    return sizeAbsDiff(a, sizeTarget) - sizeAbsDiff(b, sizeTarget);
+  }
+}
+
+export function findElementBySize(elements: Element[], sizeTarget: RectSize, threshold?: Threshold): ?Element {
+  const sorted = elements.filter(filterBySizeAbsDiff(sizeTarget, 5)).sort(sortBySizeAbsDiff(sizeTarget));
+  return sorted[sorted.length - 1];
 }
 
 export function findSelfOrChildBySize(el: Element, selector: string, threshold?: Threshold): ?Element {
@@ -50,20 +59,19 @@ export function findSelfOrChildBySize(el: Element, selector: string, threshold?:
   if ($el.is(selector)) {
     // if $el matches the selector, just return el
     found = el;
-  } else if (outerArea(el) < MIN_ELEM_AREA) {
-    // if it's really small, just find the biggest element matching the selector
-    const sorted = $el.find(selector).toArray().sort(outerAreaDiff);
-    found = sorted[sorted.length - 1];
+  // } else if (outerArea(el) < MIN_ELEM_AREA) {
+  //   // if it's really small, just find the biggest element matching the selector
+  //   const sorted = $el.find(selector).toArray().sort(outerAreaDiff);
+  //   found = sorted[sorted.length - 1];
   } else {
     // otherwise, find the element whose area is closest to el
-    const sorted = $el.find(selector).toArray().sort(sortByOuterAreaAbsDiff(el));
-    found = sorted[0];
+    found = findElementBySize($el.find(selector).toArray(), elementSize(el), threshold);
   }
 
   // If it's not above the threshold, then ignore it.
-  if (found != null && threshold && !passesThreshold(found, el, threshold)) {
-    found = null;
-  }
+  // if (found != null && threshold && !passesThreshold(found, el, threshold)) {
+  //   found = null;
+  // }
 
   return found;
 }

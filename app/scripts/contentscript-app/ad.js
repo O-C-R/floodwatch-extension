@@ -4,6 +4,7 @@
 
 import $ from 'jquery';
 import * as _ from 'lodash';
+import log from 'loglevel';
 
 import {Frame} from './frame';
 import {TYPE_MAP, ELEMENT_SELECTOR, CAPTURE_THRESHOLD, SCROLL_WAIT_TIME, FRAME_LOAD_WAIT_TIME} from '../core/constants';
@@ -180,11 +181,11 @@ export class AdElement {
     this.screenState = 'started';
     this.setStyle();
 
-    console.log('Screening in background...', this.$el);
+    log.info('Screening in background...', this.$el);
     this.isAd = await this.screenInBackground(frame);
     this.screenState = 'done';
     this.setStyle();
-    console.log('Done screening in background.');
+    log.info('Done screening in background.');
 
     return this.isAd;
   }
@@ -193,7 +194,7 @@ export class AdElement {
     return new Promise((resolve, reject) => {
       frame.sendMessageToBackground('screenElement', this.toApiJson(), (response) => {
         if (response.error) {
-          console.error('Response contained error!', response);
+          log.error('Response contained error!', response);
           return reject(response.error);
         }
 
@@ -210,7 +211,7 @@ export class AdElement {
         resolve();
       } else {
         // Image has yet to load, wait for that to happen.
-        this.$el.on('load', resolve).on('error', reject);
+        this.$el.on('load', resolve).on('error', e => reject(new FWError('Error on image load')));
       }
     });
   }
@@ -230,22 +231,15 @@ export class AdElement {
     });
   }
 
-  ensureObjectLoaded(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        const embed: ?Element = findSelfOrChildBySize(this.el, EMBED_SELECTOR);
+  async ensureObjectLoaded(): Promise<void> {
+    const embed: ?Element = findSelfOrChildBySize(this.el, EMBED_SELECTOR);
 
-        if (embed) {
-          // There's a good embed, make sure it's loaded.
-          resolve(this.ensureSWFLoaded(embed));
-        } else {
-          // No embed found! Continuing, but this is a warning...
-          resolve();
-        }
-      } catch (e) {
-        reject(e);
-      }
-    })
+    if (embed) {
+      // There's a good embed, make sure it's loaded.
+      await this.ensureSWFLoaded(embed);
+    } else {
+      // No embed found! Continuing, but this is a warning...
+    }
   }
 
   ensureLoaded(): Promise<void> {
@@ -260,8 +254,8 @@ export class AdElement {
     }
   }
 
-  async requestScreenshot(target: Element, options?: CaptureOptions): Promise<string> {
-    console.log(this.localId, this.el, 'requesting screenshot of', target);
+  async requestScreenshotRelative(target: Element, innerRect: ?Rect, options?: CaptureOptions) {
+    log.info(this.localId, this.el, 'requesting screenshot of', target);
 
     return new Promise((resolve, reject) => {
       const rect = Rect.forElement(target);
@@ -274,6 +268,7 @@ export class AdElement {
 
       const area = rect.relativeToCurrentViewport().scaled(win.devicePixelRatio).baked();
       const payload = { area };
+      // rect.
 
       this.frame.sendMessageToBackground('captureScreenshot', payload, (res) => {
         if (res.error) {
@@ -285,12 +280,16 @@ export class AdElement {
     });
   }
 
+  requestScreenshot(target: Element, options?: CaptureOptions): Promise<string> {
+    return this.requestScreenshotRelative(target, null, options);
+  }
+
   async ensureFrameInView(targetIfAny: ?Element, options?: CaptureOptions): Promise<void> {
     const target = targetIfAny || this.el;
     const rect = Rect.forElement(target);
 
     // if ($(target).is(':visible')) {
-    //   console.error(this.localId, target, this.el, 'not visible');
+    //   log.error(this.localId, target, this.el, 'not visible');
     //   throw new FWError('Can\'t capture element that is not :visible.');
     // }
 
@@ -300,7 +299,14 @@ export class AdElement {
 
     // The rect is not the largest container - bump this request up a node.
     if (!rect.isAbsolute) {
-      throw new FWError('Not absolute capture not implemented ;)');
+      try {
+        // await this.frame.
+      } catch (e) {
+        log.error(e);
+        throw new FWError('Error capturing in parent!');
+      } finally {
+        throw new FWError('Captured in parent!');
+      }
     }
 
     // Rect is not visible, wait for it to be still in the screen.
@@ -313,7 +319,7 @@ export class AdElement {
         const scrollDone = () => {
           const newRect = Rect.forElement(target);
           if (Rect.forWindow(newRect.window).contains(newRect)) {
-            console.log(this.el, 'scrolled into view!');
+            log.info(this.el, 'scrolled into view!');
             resolve();
             this.frame.view.removeEventListener('scroll', scrollListener);
           }
@@ -343,14 +349,23 @@ export class AdElement {
       const iframeTarget = ((target: any): HTMLIFrameElement);
       await this.frame.areChildrenDoneLoading(iframeTarget);
 
+      const dims = { width: $(target).outerWidth(), height: $(target).outerHeight() };
+      const capturedGraphic = await this.frame.captureFillGraphic(iframeTarget, dims);
+      if (capturedGraphic) {
+        this.recordedAdState = 'done';
+        this.screenshotState = 'none';
+        this.setStyle();
+
+        throw new FWError('Captured in lower frame');
+      }
+
       this.screenshotState = 'active';
       this.setStyle();
-
-      await this.ensureFrameInView(target);
 
       let data = null;
       try {
         do {
+          await this.ensureFrameInView(target);
           this.timeAtScreenshotRequest = new Date();
           data = await this.requestScreenshot(target);
         } while (this.timeAtScreenshotRequest && this.frame.lastScrollTime > this.timeAtScreenshotRequest);
@@ -367,34 +382,12 @@ export class AdElement {
   }
 
   async findBestCaptureTarget(options: CaptureOptions): Promise<?Element> {
-    const bestFrame = []; //await bestFrameChild(fwFrame, $el, options.threshold);
     let bestChild: ?Element = findSelfOrChildBySize(this.el, GRAPHIC_SELECTOR, options.threshold);
-
     if (!bestChild && this.$el.is(FRAME_SELECTOR)) {
       bestChild = this.el;
     }
 
     return bestChild;
-
-    // if (bestLocal) {
-    //   // There's a child element that passes our threshold
-    //   if (bestFrame
-    //       && bestFrame.bestOADiff !== null
-    //       && bestFrame.bestOADiff !== undefined
-    //       && bestFrame.bestOADiff < outerAreaAbsDiff(bestLocal, this.el)) {
-    //     // But the frame element is better
-    //     return $(bestFrame.frame);
-    //   } else {
-    //     // Child element is better, or there's no frame element
-    //     return bestLocal;
-    //   }
-    // } else if (bestFrame) {
-    //   // No child element, but there is a frame element.
-    //   return $(bestFrame.frame);
-    // } else {
-    //   // Nothing matches
-    //   return null;
-    // }
   }
 
   async capture(options: CaptureOptions = {}): Promise<string> {
@@ -408,7 +401,7 @@ export class AdElement {
     // Find the best child
     const target: ?Element = await this.findBestCaptureTarget(options);
 
-    console.log(this.localId, this.el, 'got a target', target);
+    log.info(this.localId, this.el, 'got a target', target);
 
     // Maybe we don't actually want to capture the target
     if (!target) {
@@ -417,7 +410,7 @@ export class AdElement {
       throw new FWError('Skipping graphic that is too small');
     }
 
-    console.log(this.localId, this.el, 'ready to capture', target);
+    log.info(this.localId, this.el, 'ready to capture', target);
 
     // Capture that child
     return this.captureTarget(target, options);
