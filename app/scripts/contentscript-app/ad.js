@@ -255,8 +255,6 @@ export class AdElement {
   }
 
   async requestScreenshotRelative(target: Element, innerRect: ?Rect, options?: CaptureOptions) {
-    log.info(this.localId, this.el, 'requesting screenshot of', target);
-
     return new Promise((resolve, reject) => {
       const rect = Rect.forElement(target);
 
@@ -268,8 +266,8 @@ export class AdElement {
 
       const area = rect.relativeToCurrentViewport().scaled(win.devicePixelRatio).baked();
       const payload = { area };
-      // rect.
 
+      log.trace(this.localId, this.el, 'requesting screenshot of', target, payload);
       this.frame.sendMessageToBackground('captureScreenshot', payload, (res) => {
         if (res.error) {
           return reject(res.error);
@@ -293,6 +291,7 @@ export class AdElement {
     //   throw new FWError('Can\'t capture element that is not :visible.');
     // }
 
+    log.trace(this.el, target, 'ensureFrameInView', options, rect)
     if (options && options.threshold && rect.width * rect.height < options.threshold.area) {
       throw new FWError(`Ignoring iframe smaller than ${options.threshold.area} pixels`);
     }
@@ -322,16 +321,18 @@ export class AdElement {
             log.info(this.el, 'scrolled into view!');
             resolve();
             this.frame.view.removeEventListener('scroll', scrollListener);
+            this.frame.view.removeEventListener('resize', scrollListener);
           }
         }
 
-        const scrollListener = (e: UIEvent) => {
+        const scrollListener = () => {
           if (scrollTimer != null) {
             clearTimeout(scrollTimer);
           }
           scrollTimer = setTimeout(scrollDone, SCROLL_WAIT_TIME);
         }
         this.frame.view.addEventListener('scroll', scrollListener);
+        this.frame.view.addEventListener('resize', scrollListener);
       });
     }
   }
@@ -365,7 +366,7 @@ export class AdElement {
       let data = null;
       try {
         do {
-          await this.ensureFrameInView(target);
+          await this.ensureFrameInView(target, options);
           this.timeAtScreenshotRequest = new Date();
           data = await this.requestScreenshot(target);
         } while (this.timeAtScreenshotRequest && this.frame.lastScrollTime > this.timeAtScreenshotRequest);

@@ -16,7 +16,7 @@ async function loadFilter() {
     await Filter.get().addRulesFromUrl('https://easylist-downloads.adblockplus.org/easylist.txt');
 
     // TODO: move this into a floodwatch-hosted file
-    await Filter.get().addRulesFromText('*facebook.com%2Fads%2Fimage*$image');
+    // await Filter.get().addRulesFromText('*facebook.com%2Fads%2Fimage*$image');
 
     // TODO: remove
     window.filter = Filter;
@@ -50,10 +50,19 @@ function onScreenElementMessage(message: Object, sendResponse: (obj: any) => voi
   sendResponse({ isAd, error });
 }
 
+function debugImage(src: string): void {
+  if (log.getLevel() <= log.levels.DEBUG) {
+    const image = new Image();
+    image.src = src;
+    document.body.appendChild(image);
+  }
+}
+
 function onCapturedAdMessage(message: Object) {
   const payload = message.payload;
 
-  log.info('Captured ad!', message);
+  log.debug('Captured ad!', message);
+  debugImage(payload.imgData);
 
   apiClient.addAd(payload);
   apiClient.sendAds(true);
@@ -72,12 +81,13 @@ function captureScreenshot(tabId: number, area: Rect): Promise<string> {
           try {
             const image = new Image();
             image.onerror = reject;
-            image.onload = () => {
-              log.info(tabId, area);
-              resolve(serializeImageElement(image, area));
+            image.onload = async () => {
+              log.debug('Captured screenshot in', tabId, image, area);
+              const dataUrl = await serializeImageElement(image, area);
+              debugImage(dataUrl);
+              resolve(dataUrl);
             };
             image.src = dataUrl;
-            document.body.appendChild(image);
           } catch (e) {
             reject(e);
           }
@@ -95,7 +105,7 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
     const dataUrl = await captureScreenshot(tabId, area);
     // log.info('GOT SCREENSHOT', area, dataUrl);
     log.info('sending response', dataUrl.length);
-    sendResponse({ error: null, data: { dataUrl }})
+    sendResponse({ error: null, data: { dataUrl: '' }})
   } catch (e) {
     log.error('sending error', e);
     sendResponse({ error: e.message, data: null });
@@ -137,10 +147,10 @@ function registerExtension() {
 
 export async function main() {
   // Debug
-  // log.setLevel(log.levels.TRACE);
+  log.setLevel(log.levels.TRACE);
 
-  // Release
-  log.setLevel(log.levels.WARN);
+  // Staging
+  // log.setLevel(log.levels.WARN);
 
   apiClient = new FWApiClient('http://localhost:8000');
 

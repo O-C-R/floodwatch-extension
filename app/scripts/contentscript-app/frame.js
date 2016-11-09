@@ -200,6 +200,10 @@ export class Frame {
       log.info(this.id, 'Captured!', adEl.el, data.length);
     } catch (e) {
       log.error('Error capturing', adEl, e);
+    }
+
+    if (!data) {
+      $(adEl.el).remove();
       return;
     }
 
@@ -211,6 +215,8 @@ export class Frame {
       });
     } catch (e) {
       log.error('Error recording capture of', adEl, e);
+    } finally {
+      $(adEl.el).remove();
     }
   }
 
@@ -230,9 +236,9 @@ export class Frame {
 
     // Register frame first
     try {
-      log.info(this.id, 'going to register iframe', iframe);
+      log.debug(this.id, 'going to register iframe', iframe);
       const registered = await this.registerChild(iframe);
-      log.info(this.id, 'did register', iframe);
+      log.debug(this.id, 'did register', iframe);
     } catch (e) {
       log.error(this.id, 'error registering iframe', el, e);
     }
@@ -240,14 +246,14 @@ export class Frame {
     if (this.safeToScreen) {
       // If we're okay to screen, do it.
       try {
-        log.info(this.id, 'going to screen iframe', iframe);
+        log.debug(this.id, 'going to screen iframe', iframe);
         await this.screenFrame(iframe, this.topUrl);
-        log.info(this.id, 'did screen iframe', iframe);
+        log.debug(this.id, 'did screen iframe', iframe);
       } catch (e) {
         log.error(this.id, 'error screening iframe', el, e);
       }
     } else {
-      log.info(this.id, 'not ready to screen iframe', iframe);
+      log.debug(this.id, 'not ready to screen iframe', iframe);
     }
 
   }

@@ -32,9 +32,10 @@ function attachListener() {
 async function start() {
   try {
     // Debug
-    // log.setLevel(log.levels.TRACE);
-    // Release
-    log.setLevel(log.levels.WARN);
+    log.setLevel(log.levels.TRACE);
+
+    // Staging
+    // log.setLevel(log.levels.WARN);
 
     frame = new Frame(document);
     frameId = frame.id;
