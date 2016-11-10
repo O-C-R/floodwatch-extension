@@ -32,7 +32,7 @@ function attachListener() {
 async function start() {
   try {
     // Debug
-    log.setLevel(log.levels.TRACE);
+    log.setLevel(log.levels.DEBUG);
 
     // Staging
     // log.setLevel(log.levels.WARN);

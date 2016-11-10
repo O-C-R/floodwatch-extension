@@ -1,5 +1,7 @@
 // @flow
 
+import crypto from 'crypto';
+
 export class TimeoutError extends Error {}
 export class RepeatError extends Error {}
 export class FWError extends Error {}
@@ -53,7 +55,7 @@ export function pollUntil<T>(cb: <T>() => ?T, interval: number, timeout: number)
     });
 }
 
-export async function tryRepeat<T>(cb: <T>() => Promise<?T>, times: number, delay?: number): Promise<T> {
+export async function tryRepeat<T>(cb: () => Promise<?T>, times: number, delay?: number): Promise<T> {
   for (let i = 0; i < times; ++i) {
     try {
       const res = await cb();
@@ -104,7 +106,6 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
     });
 }
 
-// Adapted from https://gist.github.com/jed/982883
-// under the DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-// $FlowFixMe: yeah, this isn't going to typecheck well...
-export const generateUUID = function b(a){return a?(a^Math.random()*16>>a/4).toString(16):([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,b)}
+export function generateUUID(): string {
+  return crypto.randomBytes(20).toString('hex');
+}

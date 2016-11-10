@@ -1,13 +1,18 @@
 // @flow
 
-export type ApiAd = {
-  timestamp: string;
-  topUrl: string;
-  htmlHash: string;
-  imageData: ?string;
-};
+import log from 'loglevel';
+import type {ApiAdPayload} from '../core/types';
 
 const NUM_ADS_PER_BATCH = 10;
+
+export type AdResponse = {
+  ads: Array<{
+    localId: string;
+    id?: string;
+    category?: string;
+    error?: string;
+  }>;
+};
 
 export class APIClient {
   baseUrl: string;
@@ -19,8 +24,9 @@ export class APIClient {
   postJSON(path: string, body?: Object): Promise<any> {
     const url = new URL(path, this.baseUrl);
 
+    log.info('POST', path, body);
     return fetch(url.toString(), {
-      method: 'GET',
+      method: 'POST',
       body: body
     }).then((body) => body.json());
   }
@@ -34,6 +40,7 @@ export class APIClient {
       }
     }
 
+    log.info('GET', path, params);
     return fetch(url.toString(), {
       method: 'GET'
     }).then((body) => body.json());
@@ -41,7 +48,7 @@ export class APIClient {
 }
 
 export class FWApiClient extends APIClient {
-  adQueue: ApiAd[];
+  adQueue: ApiAdPayload[];
 
   constructor(baseUrl: string) {
     super(baseUrl);
@@ -49,25 +56,31 @@ export class FWApiClient extends APIClient {
     this.adQueue = [];
   }
 
-  addAd(ad: ApiAd) {
+  addAd(ad: ApiAdPayload) {
     this.adQueue.push(ad);
   }
 
-  async sendAds(force: boolean = false): Promise<boolean> {
+  async sendAds(force: boolean = false): Promise<?AdResponse> {
     if (this.adQueue.length < NUM_ADS_PER_BATCH && !force) {
-      return false;
+      return null;
     }
 
     const adSlice = this.adQueue.slice(0, NUM_ADS_PER_BATCH);
     this.adQueue = this.adQueue.slice(NUM_ADS_PER_BATCH);
 
+    if (adSlice.length == 0) {
+      return null;
+    }
+
     const payload = {
       ads: adSlice
     };
+    console.log(JSON.stringify(payload));
 
-    // TODO: actually send the ads
-    // console.log(JSON.stringify(payload));
+    return this.postJSON('/api/ads', payload);
+  }
 
-    return true;
+  getAdStatus(adIds: string[]): Promise<AdResponse> {
+    return this.postJSON('/api/ads/status', { adIds });
   }
 }

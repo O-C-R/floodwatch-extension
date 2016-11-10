@@ -7,6 +7,8 @@ import {Filter} from './filter';
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
 import {FWError} from '../core/util';
+import {FORCE_AD_SEND_TIMEOUT} from '../core/constants';
+import type {ApiAd, ApiAdPayload} from '../core/types';
 
 let apiClient: FWApiClient;
 
@@ -41,7 +43,7 @@ function onScreenElementMessage(message: Object, sendResponse: (obj: any) => voi
       urls: payload.urls || []
     });
     isAd = isAdObj === true || (isAdObj && typeof isAdObj === 'object') || false;
-    // log.info('Decided', payload, 'was an ad:', isAdObj, isAd);
+    log.debug('Decided', payload, 'was an ad:', isAdObj, isAd);
   } catch (e) {
     log.error('Error detecting ad from message', message, e);
     error = e;
@@ -58,14 +60,22 @@ function debugImage(src: string): void {
   }
 }
 
-function onCapturedAdMessage(message: Object) {
-  const payload = message.payload;
-
-  log.debug('Captured ad!', message);
-  debugImage(payload.imgData);
-
+function recordAdPayload(payload: ApiAdPayload) {
+  // Add to the queue
   apiClient.addAd(payload);
-  apiClient.sendAds(true);
+
+  // Try sending the ads immediately, only happens if there are enough.
+  apiClient.sendAds();
+
+  // Otherwise, wait for ads.
+  setTimeout(() => apiClient.sendAds(true), FORCE_AD_SEND_TIMEOUT);
+}
+
+function onCapturedAdMessage(message: Object) {
+  const payload: ApiAdPayload = message.payload;
+  log.debug('Captured ad!', message);
+
+  recordAdPayload(payload);
 }
 
 // The API used in this is only available to the background script
@@ -101,21 +111,29 @@ function captureScreenshot(tabId: number, area: Rect): Promise<string> {
 
 async function onCaptureScreenshotMessage(tabId: number, message: Object, sendResponse: (obj: any) => void) {
   try {
+    const adData: ApiAd = message.payload.ad;
     const area = message.payload.area;
     const dataUrl = await captureScreenshot(tabId, area);
-    // log.info('GOT SCREENSHOT', area, dataUrl);
-    log.info('sending response', dataUrl.length);
-    sendResponse({ error: null, data: { dataUrl: '' }})
+
+    log.debug('did capture, sending response', dataUrl.length);
+
+    recordAdPayload({
+      ad: adData,
+      capture: {
+        captureType: 'screenshot',
+        image: dataUrl
+      }
+    });
+    sendResponse({ error: null, data: { captured: true }});
   } catch (e) {
-    log.error('sending error', e);
+    log.warn('did not capture, sending error', e);
     sendResponse({ error: e.message, data: null });
   }
 }
 
 // $FlowIssue: this is a good definition
 function onChromeMessage(message: any, sender: chrome$MessageSender, sendResponse: (obj: any) => void): boolean {
-  // log.info('Got message');
-  // log.info(message, sender);
+  log.debug('Got message', message, sender);
 
   if (message.type === 'screenElement') {
     onScreenElementMessage(message, sendResponse);
@@ -124,9 +142,6 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
     onCapturedAdMessage(message);
     return false;
   } else if (message.type === 'captureScreenshot') {
-    log.info('Got message');
-    log.info(message, sender, sendResponse );
-
     const tabId = sender.tab ? sender.tab.id : undefined;
     if (!tabId) {
       log.error('Got message from invalid tabId', tabId);
@@ -147,12 +162,12 @@ function registerExtension() {
 
 export async function main() {
   // Debug
-  log.setLevel(log.levels.TRACE);
+  log.setLevel(log.levels.INFO);
 
   // Staging
-  // log.setLevel(log.levels.WARN);
+  // log.setLevel(log.levels.INFO);
 
-  apiClient = new FWApiClient('http://localhost:8000');
+  apiClient = new FWApiClient('http://floodwatch.me');
 
   registerExtension();
   await loadFilter();

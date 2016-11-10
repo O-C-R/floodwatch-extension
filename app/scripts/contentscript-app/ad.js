@@ -13,6 +13,7 @@ import {serializeImageElement, serializeCanvasElement} from '../core/images';
 import {findSelfOrChildBySize, outerArea, Rect} from '../core/shapes';
 import {ensureFrameLoaded} from '../core/dom';
 import type {Threshold} from '../core/shapes';
+import type {MediaType, CaptureType, ApiAd} from '../core/types';
 
 const CLASS_SCREEN_PROGRESS = 'floodwatch-screen-inprogress';
 const CLASS_SCREEN_DONE = 'floodwatch-screen-done';
@@ -40,6 +41,16 @@ export type CaptureOptions = {
   threshold?: Threshold;
 }
 
+export type CaptureResult = {
+  didCapture: boolean;
+  localCapture?: {
+    type: CaptureType;
+    dataUrl?: string;
+  };
+  subframeCapture?: boolean;
+  noCaptureReason?: string;
+}
+
 export class AdElement {
   localId: string;
   serverId: ?string;
@@ -55,7 +66,7 @@ export class AdElement {
   topUrl: string;
   urls: string[];
   tag: string;
-  mediaType: string;
+  mediaType: MediaType;
   isAd: boolean;
   adHtml: string;
 
@@ -181,11 +192,11 @@ export class AdElement {
     this.screenState = 'started';
     this.setStyle();
 
-    log.info('Screening in background...', this.$el);
+    log.trace('Screening in background...', this.$el);
     this.isAd = await this.screenInBackground(frame);
     this.screenState = 'done';
     this.setStyle();
-    log.info('Done screening in background.');
+    log.trace('Done screening in background.');
 
     return this.isAd;
   }
@@ -254,7 +265,7 @@ export class AdElement {
     }
   }
 
-  async requestScreenshotRelative(target: Element, innerRect: ?Rect, options?: CaptureOptions) {
+  async requestScreenshotRelative(target: Element, innerRect: ?Rect, options?: CaptureOptions): Promise<boolean> {
     return new Promise((resolve, reject) => {
       const rect = Rect.forElement(target);
 
@@ -264,21 +275,23 @@ export class AdElement {
       }
       const win: WindowProxy = rect.window;
 
-      const area = rect.relativeToCurrentViewport().scaled(win.devicePixelRatio).baked();
-      const payload = { area };
-
+      const payload: { area: Object, ad: ApiAd } = {
+        area: rect.relativeToCurrentViewport().scaled(win.devicePixelRatio).baked(),
+        ad: this.toApiJson()
+      };
       log.trace(this.localId, this.el, 'requesting screenshot of', target, payload);
       this.frame.sendMessageToBackground('captureScreenshot', payload, (res) => {
         if (res.error) {
-          return reject(res.error);
+          return reject(new FWError(res.error));
         }
 
-        return resolve(res.data.dataUrl);
+        const data: { captured: boolean } = res.data;
+        return resolve(data.captured);
       });
     });
   }
 
-  requestScreenshot(target: Element, options?: CaptureOptions): Promise<string> {
+  requestScreenshot(target: Element, options?: CaptureOptions): Promise<boolean> {
     return this.requestScreenshotRelative(target, null, options);
   }
 
@@ -318,7 +331,7 @@ export class AdElement {
         const scrollDone = () => {
           const newRect = Rect.forElement(target);
           if (Rect.forWindow(newRect.window).contains(newRect)) {
-            log.info(this.el, 'scrolled into view!');
+            log.trace(this.el, 'scrolled into view!');
             resolve();
             this.frame.view.removeEventListener('scroll', scrollListener);
             this.frame.view.removeEventListener('resize', scrollListener);
@@ -337,15 +350,17 @@ export class AdElement {
     }
   }
 
-  async captureTarget(target: Element, options?: CaptureOptions): Promise<string> {
+  async captureTarget(target: Element, options?: CaptureOptions): Promise<CaptureResult> {
     const $target: JQuery = $(target);
 
     if ($target.is(IMG_SELECTOR)) {
       const imgElem: HTMLImageElement = ((target: Object): HTMLImageElement);
-      return serializeImageElement(imgElem, undefined, options);
+      const dataUrl = await serializeImageElement(imgElem, undefined, options);
+      return { didCapture: true, localCapture: { type: 'image', dataUrl }};
     } else if ($target.is(CANVAS_SELECTOR)) {
       const canvasElem: HTMLCanvasElement = ((target: Object): HTMLCanvasElement);
-      return serializeCanvasElement(canvasElem, options);
+      const dataUrl = await serializeCanvasElement(canvasElem, options);
+      return { didCapture: true, localCapture: { type: 'image', dataUrl }};
     } else if ($target.is(FRAME_SELECTOR)) {
       const iframeTarget = ((target: any): HTMLIFrameElement);
       await this.frame.areChildrenDoneLoading(iframeTarget);
@@ -357,26 +372,24 @@ export class AdElement {
         this.screenshotState = 'none';
         this.setStyle();
 
-        throw new FWError('Captured in lower frame');
+        return { didCapture: true, subframeCapture: true };
       }
 
       this.screenshotState = 'active';
       this.setStyle();
 
-      let data = null;
+      let didScreenshot: boolean = false;
       try {
         do {
           await this.ensureFrameInView(target, options);
           this.timeAtScreenshotRequest = new Date();
-          data = await this.requestScreenshot(target);
-        } while (this.timeAtScreenshotRequest && this.frame.lastScrollTime > this.timeAtScreenshotRequest);
+          didScreenshot = await this.requestScreenshot(target);
+        } while (!didScreenshot || (this.timeAtScreenshotRequest && this.frame.lastScrollTime > this.timeAtScreenshotRequest));
+        return { didCapture: true, localCapture: { type: 'screenshot' }};
       } finally {
         this.screenshotState = 'none';
         this.setStyle();
       }
-
-      if (!data) throw new FWError('No Data!');
-      return data;
     } else {
       throw new FWError('No way to capture this element!');
     }
@@ -391,7 +404,7 @@ export class AdElement {
     return bestChild;
   }
 
-  async capture(options: CaptureOptions = {}): Promise<string> {
+  async capture(options: CaptureOptions = {}): Promise<CaptureResult> {
     options = _.extend({
       threshold: CAPTURE_THRESHOLD
     }, options);
@@ -402,16 +415,16 @@ export class AdElement {
     // Find the best child
     const target: ?Element = await this.findBestCaptureTarget(options);
 
-    log.info(this.localId, this.el, 'got a target', target);
+    log.trace(this.localId, this.el, 'got a target', target);
 
     // Maybe we don't actually want to capture the target
     if (!target) {
-      throw new FWError('No graphic element!');
+      throw new FWError('No capture target!');
     } else if (outerArea(target) < CAPTURE_THRESHOLD.area) {
-      throw new FWError('Skipping graphic that is too small');
+      return { didCapture: false, noCaptureReason: 'Too small.' };
     }
 
-    log.info(this.localId, this.el, 'ready to capture', target);
+    log.trace(this.localId, this.el, 'ready to capture', target);
 
     // Capture that child
     return this.captureTarget(target, options);
@@ -457,13 +470,13 @@ export class AdElement {
     this.setStyle();
   }
 
-  toApiJson() {
+  toApiJson(): ApiAd {
     return {
       localId: this.localId,
       topUrl: this.topUrl,
       html: this.adHtml,
       mediaType: this.mediaType,
-      urls: this.urls
+      adUrls: this.urls
     };
   }
 }

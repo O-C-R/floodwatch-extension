@@ -1,17 +1,17 @@
 // @flow
 
 export const TYPE_MAP = {
-  'img':      'IMAGE',
-  'input':    'IMAGE',
-  'picture':  'IMAGE',
-  'audio':    'MEDIA',
-  'video':    'MEDIA',
-  'frame':    'SUBDOCUMENT',
-  'iframe':   'SUBDOCUMENT',
-  'object':   'OBJECT',
-  'embed':    'OBJECT',
-  'style':    'STYLESHEET',
-  'script':   'SCRIPT'
+  'img':      'image',
+  'input':    'image',
+  'picture':  'image',
+  'audio':    'media',
+  'video':    'media',
+  'frame':    'subdocument',
+  'iframe':   'subdocument',
+  'object':   'object',
+  'embed':    'object',
+  'style':    'stylesheet',
+  'script':   'script'
 };
 
 // export const ELEMENT_SELECTOR = Object.keys(TYPE_MAP).join(',');
@@ -25,3 +25,5 @@ export const MIN_ELEM_AREA = 4;
 
 export const SCROLL_WAIT_TIME = 50;
 export const FRAME_LOAD_WAIT_TIME = 200;
+
+export const FORCE_AD_SEND_TIMEOUT = 5000;
