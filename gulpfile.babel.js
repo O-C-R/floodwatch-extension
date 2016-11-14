@@ -15,7 +15,7 @@ import buffer from 'vinyl-buffer';
 import source from 'vinyl-source-stream';
 import babelify from 'babelify';
 import watchify from 'watchify';
-
+import sass from 'gulp-sass';
 
 const $ = gulpLoadPlugins();
 let watching = false;
@@ -57,7 +57,13 @@ function buildJS(watch: boolean, done: Function) {
         fullPaths: true
       })
       .transform(babelify, { sourceMaps: true, sourceMapsAbsolute: false })
-      .plugin(watchify);
+      .plugin(watchify)
+      .on('error', function(err){
+        // print the error (can replace with gulp-util)
+        console.log(err.message);
+        // end this stream
+        this.emit('end');
+      });
 
       const bundle = () => {
         if (watch) {
@@ -65,6 +71,12 @@ function buildJS(watch: boolean, done: Function) {
         }
 
         const s = b.bundle()
+          .on('error', function(err){
+            // print the error (can replace with gulp-util)
+            console.log(err.message);
+            // end this stream
+            this.emit('end');
+          })
           .pipe(source(path.basename(entry)))
           .pipe(buffer())
           // .pipe($.if(watch, $.sourcemaps.init({ loadMaps: true })))
@@ -76,8 +88,12 @@ function buildJS(watch: boolean, done: Function) {
           s.on('end', () => console.log('Done rebundling:', entry));
         }
 
+        // s.on('error', console.error);
+
         return s;
       };
+
+      // b.on('error', console.error);
 
       if (watch) {
         b.on('update', bundle);
@@ -91,10 +107,19 @@ function buildJS(watch: boolean, done: Function) {
 }
 
 gulp.task('watch', (done) => {
+  gulp.watch('app/styles/**/*.scss', ['sass']);
   buildJS(true, done);
 });
 
 gulp.task('lint', lint('app/scripts/**/*.js'));
+
+gulp.task('sass', function() {
+  return gulp.src('app/styles/**/*.scss')
+    .pipe($.sourcemaps.init())
+    .pipe(sass().on('error', sass.logError))
+    .pipe($.sourcemaps.write())
+    .pipe(gulp.dest('dist/styles'));
+});
 
 gulp.task('images', () => {
   return gulp.src('app/images/**/*')
@@ -151,7 +176,7 @@ gulp.task('package', function () {
 gulp.task('build', (cb) => {
   runSequence(
     'lint', 'js',
-    ['html', 'images', 'extras'],
+    ['html', 'images', 'extras', 'sass'],
     'size', cb);
 });
 

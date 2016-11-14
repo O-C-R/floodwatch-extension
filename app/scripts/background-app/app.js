@@ -6,11 +6,16 @@ import {FWApiClient} from './api';
 import {Filter} from './filter';
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
-import {FWError} from '../core/util';
+import {FWError, delayedPromise} from '../core/util';
 import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
 
+type Person = {
+  username: string;
+};
+
 let apiClient: FWApiClient;
+let currentPerson: ?Person;
 
 async function loadFilter() {
   try {
@@ -132,6 +137,29 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
   }
 }
 
+async function onLoginMessage(message: any, sendResponse: (obj: any) => void) {
+  const payload: { username: string, password: string } = message.payload;
+  try {
+    await apiClient.login(payload.username, payload.password);
+    sendResponse({ username: apiClient.username });
+  } catch (e) {
+    sendResponse({ err: e.message });
+  }
+}
+
+function onGetLoginStatusMessage(message: any, sendResponse: (obj: any) => void) {
+  sendResponse({ username: apiClient.username });
+}
+
+async function onLogoutMessage(message: any, sendResponse: (obj: any) => void) {
+  try {
+    await apiClient.logout();
+    sendResponse({});
+  } catch (e) {
+    sendResponse({ err: e.message });
+  }
+}
+
 // $FlowIssue: this is a good definition
 function onChromeMessage(message: any, sender: chrome$MessageSender, sendResponse: (obj: any) => void): boolean {
   log.debug('Got message', message, sender);
@@ -151,6 +179,15 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
 
     onCaptureScreenshotMessage(tabId, message, sendResponse);
     return true;
+  } else if (message.type === 'getLoginStatus') {
+    onGetLoginStatusMessage(message, sendResponse);
+    return true;
+  } else if (message.type === 'login') {
+    onLoginMessage(message, sendResponse);
+    return true;
+  } else if (message.type === 'logout') {
+    onLogoutMessage(message, sendResponse);
+    return true;
   }
 
   return false;
@@ -167,19 +204,28 @@ async function onChromeAlarm(alarm: chrome$Alarm) {
 function registerExtension() {
   // $FlowIssue: this is a good definition
   chrome.runtime.onMessage.addListener(onChromeMessage);
+  chrome.alarms.onAlarm.addListener(onChromeAlarm);
 }
 
 export async function main() {
   // Debug
-  log.setLevel(log.levels.INFO);
+  log.setLevel(log.levels.TRACE);
 
   // Staging
   // log.setLevel(log.levels.INFO);
 
+  // Register listeners
+  registerExtension();
+
+  // Create API client
   apiClient = new FWApiClient('http://floodwatch.me');
 
-  registerExtension();
-  await loadFilter();
+  try {
+    await apiClient.getCurrentPerson();
+  } catch (e) {
+    // Not logged in, move on.
+  }
 
-  chrome.alarms.onAlarm.addListener(onChromeAlarm);
+  // Load the filter the first time
+  await loadFilter();
 }

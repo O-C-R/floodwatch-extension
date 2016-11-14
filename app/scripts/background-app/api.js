@@ -14,6 +14,10 @@ export type AdResponse = {
   }>;
 };
 
+export type PersonResponse = {
+  username: string;
+}
+
 export class APIClient {
   baseUrl: string;
 
@@ -48,16 +52,20 @@ export class APIClient {
 }
 
 export class FWApiClient extends APIClient {
+  username: ?string;
   adQueue: ApiAdPayload[];
 
   constructor(baseUrl: string) {
     super(baseUrl);
 
+    this.username = null;
     this.adQueue = [];
   }
 
   addAd(ad: ApiAdPayload) {
-    this.adQueue.push(ad);
+    if (this.username) {
+      this.adQueue.push(ad);
+    }
   }
 
   async sendAds(force: boolean = false): Promise<?AdResponse> {
@@ -81,14 +89,27 @@ export class FWApiClient extends APIClient {
   //   return this.postJSON('/api/ads/status', { adIds });
   // }
 
-  async login(username: string, password: string): Promise<boolean> {
+  async getCurrentPerson(): Promise<PersonResponse> {
     try {
       // response has no content, so any non-error means success
-      await this.postJSON('/api/login', { username, password });
-      return true;
+      const res: PersonResponse = await this.getJSON('/api/person/current');
+      this.username = res.username;
+      return res;
+    } catch (e) {
+      this.username = null;
+      throw e;
+    }
+  }
+
+  async login(username: string, password: string): Promise<void> {
+    try {
+      // response has no content, so any non-error means success
+      const res: PersonResponse = await this.postJSON('/api/login', { username, password });
+      this.username = res.username;
     } catch (e) {
       console.error('Error logging in:', e);
-      return false;
+      this.username = null;
+      throw e;
     }
   }
 
