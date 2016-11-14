@@ -7,24 +7,25 @@ import {Filter} from './filter';
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
 import {FWError} from '../core/util';
-import {FORCE_AD_SEND_TIMEOUT} from '../core/constants';
+import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
 
 let apiClient: FWApiClient;
 
 async function loadFilter() {
   try {
-    // TODO: do this more often than on extension reload
+    log.info('Reloading filter...');
     await Filter.get().addRulesFromUrl('https://easylist-downloads.adblockplus.org/easylist.txt');
 
     // TODO: move this into a floodwatch-hosted file
     // await Filter.get().addRulesFromText('*facebook.com%2Fads%2Fimage*$image');
 
-    // TODO: remove
-    window.filter = Filter;
-
+    // Set alarm to do this again after a while.
+    chrome.alarms.create('reloadFilter', { periodInMinutes: ABP_FILTER_RELOAD_TIME_MINUTES });
     log.info('Done loading filter!');
   } catch (e) {
+    // Set alarm to try again soon.
+    chrome.alarms.create('reloadFilter', { when: Date.now() + ABP_FILTER_RETRY_DELAY_MS });
     log.error(e);
   }
 }
@@ -155,6 +156,14 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
   return false;
 }
 
+// $FlowIssue: chrome$Alarm is correct here
+async function onChromeAlarm(alarm: chrome$Alarm) {
+  console.log(alarm);
+  if (alarm.name == 'reloadFilter') {
+    await loadFilter();
+  }
+}
+
 function registerExtension() {
   // $FlowIssue: this is a good definition
   chrome.runtime.onMessage.addListener(onChromeMessage);
@@ -171,4 +180,6 @@ export async function main() {
 
   registerExtension();
   await loadFilter();
+
+  chrome.alarms.onAlarm.addListener(onChromeAlarm);
 }

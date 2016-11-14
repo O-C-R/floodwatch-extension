@@ -15,9 +15,9 @@
   },
   "permissions": [
     "<all_urls>",
+    "alarms",
     "tabs",
-    "background",
-    "notifications",
+    "background",    
     "pageCapture"
   ],
   "options_ui": {
