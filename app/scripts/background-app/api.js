@@ -21,17 +21,18 @@ export class APIClient {
     this.baseUrl = baseUrl;
   }
 
-  postJSON(path: string, body?: Object): Promise<any> {
+  async postJSON(path: string, body?: Object): Promise<any> {
     const url = new URL(path, this.baseUrl);
 
     log.info('POST', path, body);
-    return fetch(url.toString(), {
+    const res = await fetch(url.toString(), {
       method: 'POST',
       body: body
-    }).then((body) => body.json());
+    });
+    return res.json();
   }
 
-  getJSON(path: string, params?: Object): Promise<any> {
+  async getJSON(path: string, params?: Object): Promise<any> {
     const url = new URL(path, this.baseUrl);
 
     if (params) {
@@ -41,9 +42,8 @@ export class APIClient {
     }
 
     log.info('GET', path, params);
-    return fetch(url.toString(), {
-      method: 'GET'
-    }).then((body) => body.json());
+    const res = await fetch(url.toString(), { method: 'GET' });
+    return res.json();
   }
 }
 
@@ -68,19 +68,31 @@ export class FWApiClient extends APIClient {
     const adSlice = this.adQueue.slice(0, NUM_ADS_PER_BATCH);
     this.adQueue = this.adQueue.slice(NUM_ADS_PER_BATCH);
 
+    // Simulate empty for an empty set, we're done.
     if (adSlice.length == 0) {
-      return null;
+      return { ads: [] };
     }
 
-    const payload = {
-      ads: adSlice
-    };
-    console.log(JSON.stringify(payload));
-
-    return this.postJSON('/api/ads', payload);
+    return this.postJSON('/api/ads', { ads: adSlice });
   }
 
-  getAdStatus(adIds: string[]): Promise<AdResponse> {
-    return this.postJSON('/api/ads/status', { adIds });
+  // TODO: implement when the server implements it
+  // getAdStatus(adIds: string[]): Promise<AdResponse> {
+  //   return this.postJSON('/api/ads/status', { adIds });
+  // }
+
+  async login(username: string, password: string): Promise<boolean> {
+    try {
+      // response has no content, so any non-error means success
+      await this.postJSON('/api/login', { username, password });
+      return true;
+    } catch (e) {
+      console.error('Error logging in:', e);
+      return false;
+    }
+  }
+
+  logout(): Promise<void> {
+    return this.postJSON('/api/logout');
   }
 }
