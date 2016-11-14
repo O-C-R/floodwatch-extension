@@ -2190,7 +2190,7 @@ flow-bin@^0.34.0:
   version "0.34.0"
   resolved "https://registry.yarnpkg.com/flow-bin/-/flow-bin-0.34.0.tgz#093ed36981e8fafc39d16f0b0878d0968aa80fad"
 
-flow-interfaces-chrome@^0.1.1:
+flow-interfaces-chrome:
   version "0.1.1"
   resolved "https://registry.yarnpkg.com/flow-interfaces-chrome/-/flow-interfaces-chrome-0.1.1.tgz#77bf9f7c18a35518def6d35e7879a879ab549a43"
 
