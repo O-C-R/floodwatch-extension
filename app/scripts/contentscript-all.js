@@ -3,6 +3,7 @@
 import $ from 'jquery';
 import log from 'loglevel';
 
+import {setupLogging} from './core/util';
 import {Frame} from './contentscript-app/frame';
 
 let frame: Frame;
@@ -31,14 +32,7 @@ function attachListener() {
 
 async function start() {
   try {
-    chrome.storage.sync.get('logLevel', (res: { logLevel: number }) => {
-      log.setLevel(res.logLevel || log.levels.SILENT);
-    });
-    chrome.storage.onChanged.addListener((changes: Object) => {
-      if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
-        log.setLevel(changes.logLevel.newValue);
-      }
-    });
+    setupLogging();
 
     frame = new Frame(document);
     frameId = frame.id;

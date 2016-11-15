@@ -6,6 +6,7 @@ import React, {Component} from 'react';
 import {Main} from './Main';
 import {Login} from './Login';
 import {sendMessageToBackground} from './communication';
+import {setupLogging} from '../core/util';
 
 type State = {
   username: ?string;
@@ -16,6 +17,7 @@ export class App extends Component {
 
   constructor() {
     super();
+    setupLogging();
 
     this.state = {
       username: null
