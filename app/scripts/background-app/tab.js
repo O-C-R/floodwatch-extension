@@ -15,7 +15,7 @@ export class FWTabInfo {
   }
 
   static loadTabs(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       function createTabInfo(tab: chrome$Tab) {
         if (tab.id !== undefined && tab.id >= 0 && tab.url !== undefined) {
           const tabInfo = new FWTabInfo(tab.id);
@@ -30,7 +30,7 @@ export class FWTabInfo {
           createTabInfo(tab);
         }
 
-        chrome.tabs.onRemoved.addListener((tabId: number, removeInfo: Object) => {
+        chrome.tabs.onRemoved.addListener((tabId: number) => {
           delete allTabs[tabId.toString()];
         });
 

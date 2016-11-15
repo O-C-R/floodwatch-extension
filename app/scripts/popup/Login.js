@@ -65,7 +65,7 @@ export class Login extends Component {
     return (
       <div>
         <h2>Please log in</h2>
-        { this.state.err ? <h3 class="err">{this.state.err}</h3> : '' }
+        { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
         <form onSubmit={this.handleSubmit.bind(this)}>
           Username:
           <input type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />

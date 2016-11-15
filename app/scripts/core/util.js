@@ -88,7 +88,7 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
           setTimeout(poll, delay);
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (!timedOut) {
           setTimeout(poll, delay);
         }

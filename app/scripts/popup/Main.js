@@ -2,8 +2,6 @@
 
 import React, {Component} from 'react';
 
-import {sendMessageToBackground} from './communication';
-
 type Props = {
   username: string;
   handleLogout: () => Promise<void>;
@@ -35,7 +33,7 @@ export class Main extends Component {
     return (
       <div>
         <h2>Logged in!</h2>
-        { this.state.err ? <h3 class="err">{this.state.err}</h3> : '' }
+        { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
         <form onSubmit={this.handleLogout.bind(this)}>
           <input type="submit" value="Logout" />
         </form>

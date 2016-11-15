@@ -8,7 +8,7 @@ import {FWTabInfo} from './tab';
 
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
-import {FWError, delayedPromise} from '../core/util';
+import {FWError} from '../core/util';
 import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
 
@@ -214,7 +214,7 @@ export async function main() {
   chrome.storage.sync.get('logLevel', (res: { logLevel: number }) => {
     log.setLevel(res.logLevel || log.levels.SILENT);
   });
-  chrome.storage.onChanged.addListener((changes: Object, areaName: string) => {
+  chrome.storage.onChanged.addListener((changes: Object) => {
     if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
       log.setLevel(changes.logLevel.newValue);
     }

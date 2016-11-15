@@ -4,7 +4,6 @@ import $ from 'jquery';
 import log from 'loglevel';
 
 import {Frame} from './contentscript-app/frame';
-import {promiseTimeout, tryUntil} from './core/util';
 
 let frame: Frame;
 let frameId = 'none';
@@ -35,7 +34,7 @@ async function start() {
     chrome.storage.sync.get('logLevel', (res: { logLevel: number }) => {
       log.setLevel(res.logLevel || log.levels.SILENT);
     });
-    chrome.storage.onChanged.addListener((changes: Object, areaName: string) => {
+    chrome.storage.onChanged.addListener((changes: Object) => {
       if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
         log.setLevel(changes.logLevel.newValue);
       }

@@ -17,7 +17,7 @@ export class App extends Component {
       logLevel: log.getLevel()
     }
 
-    chrome.storage.onChanged.addListener((changes: Object, areaName: string) => {
+    chrome.storage.onChanged.addListener((changes: Object) => {
       if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
         log.setLevel(changes.logLevel.newValue);
         this.setState({ logLevel: changes.logLevel.newValue });

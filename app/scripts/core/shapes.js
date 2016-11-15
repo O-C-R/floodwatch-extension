@@ -2,7 +2,7 @@
 
 import $ from 'jquery';
 
-import {MIN_ELEM_AREA} from './constants';
+import {MAX_ELEM_AREA_DIFF} from './constants';
 
 type JQElem = JQuery | Element;
 
@@ -47,31 +47,22 @@ function sortBySizeAbsDiff(sizeTarget: RectSize): (a: Element, b: Element) => nu
   }
 }
 
-export function findElementBySize(elements: Element[], sizeTarget: RectSize, threshold?: Threshold): ?Element {
-  const sorted = elements.filter(filterBySizeAbsDiff(sizeTarget, 5)).sort(sortBySizeAbsDiff(sizeTarget));
+export function findElementBySize(elements: Element[], sizeTarget: RectSize): ?Element {
+  const sorted = elements.filter(filterBySizeAbsDiff(sizeTarget, MAX_ELEM_AREA_DIFF)).sort(sortBySizeAbsDiff(sizeTarget));
   return sorted[sorted.length - 1];
 }
 
-export function findSelfOrChildBySize(el: Element, selector: string, threshold?: Threshold): ?Element {
+export function findSelfOrChildBySize(el: Element, selector: string): ?Element {
   const $el = $(el);
   let found: ?Element = null;
 
   if ($el.is(selector)) {
     // if $el matches the selector, just return el
     found = el;
-  // } else if (outerArea(el) < MIN_ELEM_AREA) {
-  //   // if it's really small, just find the biggest element matching the selector
-  //   const sorted = $el.find(selector).toArray().sort(outerAreaDiff);
-  //   found = sorted[sorted.length - 1];
   } else {
     // otherwise, find the element whose area is closest to el
-    found = findElementBySize($el.find(selector).toArray(), elementSize(el), threshold);
+    found = findElementBySize($el.find(selector).toArray(), elementSize(el));
   }
-
-  // If it's not above the threshold, then ignore it.
-  // if (found != null && threshold && !passesThreshold(found, el, threshold)) {
-  //   found = null;
-  // }
 
   return found;
 }

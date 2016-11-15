@@ -25,6 +25,7 @@
     "browserify": "^13.1.0",
     "del": "^2.2.0",
     "eslint-plugin-flowtype": "^2.19.0",
+    "eslint-plugin-react": "^6.7.1",
     "event-stream": "^3.3.4",
     "flow-bin": "^0.34.0",
     "flow-interfaces-chrome": "^0.1.1",
