@@ -567,18 +567,19 @@ export class Frame {
 
     log.debug(this.id, 'going to try to ping', crossOriginChildren);
 
-    const crossOriginPromises: Array<Promise<boolean>> = crossOriginChildren
-      .map(async c => {
-        try {
-          // $FlowIssue: contentwindow1!!!
-          await this.ping(c.contentWindow);
-          log.trace(this.id, 'success pinging', c)
-          return true;
-        } catch (e) {
-          log.trace(this.id, 'error pinging', c);
-        }
-        return false;
-      });
+    const pingChild = async (c: HTMLIFrameElement): Promise<boolean> => {
+      try {
+        // $FlowIssue: contentwindow1!!!
+        await this.ping(c.contentWindow);
+        log.trace(this.id, 'success pinging', c)
+        return true;
+      } catch (e) {
+        log.trace(this.id, 'error pinging', c);
+      }
+      return false;
+    }
+
+    const crossOriginPromises: Array<Promise<boolean>> = crossOriginChildren.map(pingChild);
 
     const responses = await Promise.all(crossOriginPromises);
 
