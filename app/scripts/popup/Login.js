@@ -3,9 +3,12 @@
 import React, {Component} from 'react';
 import {sendMessageToBackground} from './communication';
 
+type Props = {
+  handleLogin: (username: string) => void;
+}
+
 type State = {
   isSubmitting: boolean;
-  username: ?string;
   err: ?string;
 
   usernameField: string;
@@ -15,22 +18,16 @@ type State = {
 export class Login extends Component {
   state: State;
 
-  constructor() {
-    super();
+  constructor(props: Props) {
+    super(props);
 
     this.state = {
       isSubmitting: false,
-      username: null,
       err: null,
 
       usernameField: '',
       passwordField: '',
     };
-
-    sendMessageToBackground('getLoginStatus', null)
-      .then((res: { username: string }) => {
-        this.setState({ username: res.username });
-      });
   }
 
   handleUsernameChange(event: Event) {
@@ -53,11 +50,10 @@ export class Login extends Component {
       username: this.state.usernameField,
       password: this.state.passwordField
     }).then((res: { username?: string, err?: string }) => {
-      this.setState({
-        isSubmitting: false,
-        username: res.username || null,
-        err: res.err || null
-      });
+      this.setState({ isSubmitting: false, err: res.err || null });
+      if (res.username) {
+        this.props.handleLogin(res.username);
+      }
     });
   }
 

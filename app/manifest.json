@@ -17,6 +17,7 @@
     "<all_urls>",
     "alarms",
     "background",
+    "cookies",
     "pageCapture",
     "storage",
     "tabs",

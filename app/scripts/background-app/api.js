@@ -28,16 +28,52 @@ export class APIClient {
     this.baseUrl = baseUrl;
   }
 
-  async postJSON(path: string, body?: Object): Promise<any> {
+  async post(path: string, body?: Object): Promise<any> {
     const url = new URL(path, this.baseUrl);
+    const data = new FormData();
 
-    log.info('POST', path, body);
+    if (body) {
+      for (const key in body) {
+        data.append(key, body[key]);
+      }
+    }
+
+    log.info('POST', path, body, data);
 
     let res;
     try {
       res = await fetch(url.toString(), {
         method: 'POST',
-        body: body
+        credentials: 'include',
+        body: data
+      });
+    } catch (e) {
+      console.error('Error POSTing', url.toString(), e);
+      throw new FWError('HTTP error');
+    }
+
+    if (!res.ok) {
+      console.error('Error POSTing', url.toString(), await res.text());
+      throw new FWError('HTTP error');
+    }
+
+    return res.text();
+  }
+
+  async postJSON(path: string, body?: Object): Promise<any> {
+    const url = new URL(path, this.baseUrl);
+
+    log.info('POST JSON', path, body);
+
+    let res;
+    try {
+      res = await fetch(url.toString(), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
       });
     } catch (e) {
       console.error('Error POSTing', url.toString(), e);
@@ -64,7 +100,10 @@ export class APIClient {
     log.info('GET', path, params);
     let res;
     try {
-      res = await fetch(url.toString(), { method: 'GET' });
+      res = await fetch(url.toString(), {
+        method: 'GET',
+        credentials: 'include'
+      });
     } catch (e) {
       console.error('Error GETing', url.toString(), e);
       throw new FWError('HTTP error');
@@ -141,8 +180,8 @@ export class FWApiClient extends APIClient {
   async login(username: string, password: string): Promise<void> {
     try {
       // response has no content, so any non-error means success
-      const res: PersonResponse = await this.postJSON('/api/login', { username, password });
-      this.username = res.username;
+      await this.post('/api/login', { username, password });
+      await this.getCurrentPerson();
     } catch (e) {
       console.error('Error logging in:', e);
       this.username = null;
@@ -150,7 +189,8 @@ export class FWApiClient extends APIClient {
     }
   }
 
-  logout(): Promise<void> {
-    return this.postJSON('/api/logout');
+  async logout(): Promise<void> {
+    await this.post('/api/logout');
+    this.username = null;
   }
 }

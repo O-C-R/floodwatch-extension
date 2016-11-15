@@ -2,6 +2,9 @@
 
 import React, {Component} from 'react';
 
+import log from 'loglevel';
+import {sendMessageToBackground} from './communication';
+
 type Props = {
   username: string;
   handleLogout: () => Promise<void>;
@@ -26,7 +29,20 @@ export class Main extends Component {
 
   handleLogout(event: Event) {
     event.preventDefault();
-    this.props.handleLogout();
+    log.debug('Logging out...');
+
+    this.setState({ isSubmitting: true });
+
+    sendMessageToBackground('logout', null)
+    .then((res: { err?: string }) => {
+      log.debug('Logout response', res);
+      this.setState({ isSubmitting: false });
+      if (!res.err) {
+        this.props.handleLogout();
+      } else {
+        this.setState({ err: res.err });
+      }
+    });
   }
 
   render() {
@@ -35,7 +51,7 @@ export class Main extends Component {
         <h2>Logged in!</h2>
         { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
         <form onSubmit={this.handleLogout.bind(this)}>
-          <input type="submit" value="Logout" />
+          <input type="submit" value="Logout" disabled={this.state.isSubmitting}/>
         </form>
       </div>
     );

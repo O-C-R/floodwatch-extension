@@ -1,5 +1,6 @@
 // @flow
 
+import log from 'loglevel';
 import React, {Component} from 'react';
 
 import {Main} from './Main';
@@ -7,12 +8,7 @@ import {Login} from './Login';
 import {sendMessageToBackground} from './communication';
 
 type State = {
-  isSubmitting: boolean;
   username: ?string;
-  err: ?string;
-
-  usernameField: string;
-  passwordField: string;
 }
 
 export class App extends Component {
@@ -22,37 +18,25 @@ export class App extends Component {
     super();
 
     this.state = {
-      isSubmitting: false,
-      username: null,
-      err: null,
-
-      usernameField: '',
-      passwordField: ''
+      username: null
     };
 
     sendMessageToBackground('getLoginStatus', null)
       .then((res: { username: string }) => {
-        this.setState({ username: res.username });
+        log.debug('Got loginStatus response', res);
+        if (res.username) {
+          this.setState({ username: res.username });
+        }
       });
   }
 
-  handleLogout(event: Event) {
-    this.setState({
-      isSubmitting: true,
-      usernameField: '',
-      passwordField: ''
-    });
-    event.preventDefault();
+  handleLogout() {
+    log.trace('handleLogout called.');
+    this.setState({ username: null });
+  }
 
-    sendMessageToBackground('logout', null)
-    .then((res: { err?: string }) => {
-      this.setState({ isSubmitting: false });
-      if (!res.err) {
-        this.setState({ username: null });
-      } else {
-        this.setState({ err: res.err });
-      }
-    });
+  handleLogin(username: string) {
+    this.setState({ username });
   }
 
   render() {
@@ -60,10 +44,13 @@ export class App extends Component {
       return (
         <Main
           username={this.state.username}
-          handleLogout={this.handleLogout.bind(this)}/>
+          handleLogout={this.handleLogout.bind(this)} />
       );
     } else {
-      return (<Login />);
+      return (
+        <Login
+          handleLogin={this.handleLogin.bind(this)} />
+      );
     }
   }
 }

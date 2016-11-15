@@ -39,7 +39,7 @@ function onScreenElementMessage(tabId: number, message: Object, sendResponse: (o
   try {
     const isAdObj = Filter.get().isAd({
       html: payload.html,
-      topUrl: payload.topUrl,
+      topUrl: FWTabInfo.getTabAdUrl(tabId) || payload.topUrl,
       mediaType: payload.mediaType,
       urls: payload.urls || []
     });
@@ -62,6 +62,8 @@ function debugImage(src: string): void {
 }
 
 function recordAdPayload(tabId: number, payload: ApiAdPayload) {
+  payload.ad.topUrl = FWTabInfo.getTabAdUrl(tabId) || payload.ad.topUrl;
+
   // Add to the queue
   FWApiClient.get().addAd(payload);
 
@@ -139,6 +141,7 @@ async function onLoginMessage(message: any, sendResponse: (obj: any) => void) {
   const payload: { username: string, password: string } = message.payload;
   try {
     await FWApiClient.get().login(payload.username, payload.password);
+    log.info('Logged in! Responding with', { username: FWApiClient.get().username });
     sendResponse({ username: FWApiClient.get().username });
   } catch (e) {
     sendResponse({ err: e.message });
