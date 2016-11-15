@@ -211,11 +211,14 @@ function registerExtension() {
 }
 
 export async function main() {
-  // Debug
-  log.setLevel(log.levels.TRACE);
-
-  // Staging
-  // log.setLevel(log.levels.INFO);
+  chrome.storage.sync.get('logLevel', (res: { logLevel: number }) => {
+    log.setLevel(res.logLevel || log.levels.SILENT);
+  });
+  chrome.storage.onChanged.addListener((changes: Object, areaName: string) => {
+    if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
+      log.setLevel(changes.logLevel.newValue);
+    }
+  });
 
   try {
     // Check to see if we're logged in.

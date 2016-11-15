@@ -107,6 +107,7 @@ function buildJS(watch: boolean, done: Function) {
 gulp.task('watch', (done) => {
   gulp.watch('app/styles/**/*.scss', ['sass']);
   gulp.watch(extraTargets, ['extras']);
+  gulp.watch('app/*.html', ['html']);
   buildJS(true, done);
 });
 

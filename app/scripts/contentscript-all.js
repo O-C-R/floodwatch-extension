@@ -10,8 +10,8 @@ let frame: Frame;
 let frameId = 'none';
 
 window.addEventListener('unhandledrejection', event => {
-  console.error('unhandledrejection');
-  console.error(event);
+  log.error('unhandledrejection');
+  log.error(event);
 });
 
 function attachListener() {
@@ -32,11 +32,14 @@ function attachListener() {
 
 async function start() {
   try {
-    // Debug
-    log.setLevel(log.levels.DEBUG);
-
-    // Staging
-    // log.setLevel(log.levels.WARN);
+    chrome.storage.sync.get('logLevel', (res: { logLevel: number }) => {
+      log.setLevel(res.logLevel || log.levels.SILENT);
+    });
+    chrome.storage.onChanged.addListener((changes: Object, areaName: string) => {
+      if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
+        log.setLevel(changes.logLevel.newValue);
+      }
+    });
 
     frame = new Frame(document);
     frameId = frame.id;
@@ -64,7 +67,7 @@ async function start() {
       });
     }
   } catch (e) {
-    console.error(`${frameId} preload error!`, e);
+    log.error(`${frameId} preload error!`, e);
   }
 }
 
