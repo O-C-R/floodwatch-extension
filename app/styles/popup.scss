@@ -1,3 +1,133 @@
-.err {
-  color: #f00;
+@import "framework/variables";
+@import "framework/fonts";
+@import "framework/reset";
+@import "framework/utils";
+@import "framework/base";
+@import "framework/form";
+
+
+.loading {
+	height: 60px;
+	width: 100%;
+
+	@extend .alignXY;
+
+	&::before, &::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		margin-top: -15px;
+		margin-left: -15px;
+
+		height: 30px;
+		width: 30px;
+
+		border-radius: 50%;
+	}
+
+	&::before {
+		border: 2px solid $color-neutral-10;
+	}
+
+	&::after {
+		border: 2px solid transparent;
+		border-top: 2px solid $color-dark;
+
+		animation: spin 1s infinite linear;
+
+		transform-origin: center;
+	}
+}
+
+@keyframes spin {
+ 	from {
+ 		transform: rotate(0deg);
+ 	}
+
+ 	from {
+ 		transform: rotate(-360deg);
+ 	}
+}
+
+.success, .error {
+	width: 100%;
+
+	border-radius: 0px;
+
+	color: $color-light;
+	margin: 10px 0;
+	padding: 15px 20px;
+	text-align: center;
+}
+
+.success {
+	background: 1px #7BCA2B;
+	background: #7BCA2B;
+	background: -moz-linear-gradient(right,  #7BCA2B 0%, #03C556 100%);
+	background: -webkit-linear-gradient(right,  #7BCA2B 0%,#03C556 100%);
+	background: linear-gradient(to left,  #7BCA2B 0%,#03C556 100%);
+}
+
+.error {
+	background: 1px #F12B41;
+	background: #F12B41;
+	background: -moz-linear-gradient(right,  #F12B41 0%, #C90118 100%);
+	background: -webkit-linear-gradient(right,  #F12B41 0%,#C90118 100%);
+	background: linear-gradient(to left,  #F12B41 0%,#C90118 100%);
+}
+
+.extension {
+	width: 280px;
+	padding: 20px 0px 5px 0px;
+	text-align: center;
+
+	&_title {
+		font-weight: bold;
+		font-family: sans-serif;
+		font-size: 13px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		margin-bottom: 10px;
+	}
+
+	&_form {
+		padding: 0 20px;
+	}
+
+	&_input {
+		@extend .input;
+		width: 100%;
+	}
+
+	&_submit {
+		@extend .btn;
+	}
+
+	&_signup {
+		text-align: center;
+		margin: 10px 0;
+		color: $color-neutral-40;
+		font-size: 11px;
+
+		a {
+			color: $color-dark;
+
+			&:hover {
+				text-decoration: underline;
+			}
+		}
+	}
+
+	&_password-lost {
+		text-align: left;
+		margin: 3px 2px;
+		color: $color-dark;
+		font-size: 11px;
+		display: block;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
 }

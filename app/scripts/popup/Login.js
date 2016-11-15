@@ -63,18 +63,15 @@ export class Login extends Component {
 
   render() {
     return (
-      <div>
-        <h2>Please log in</h2>
-        { this.state.err ? <h3 class="err">{this.state.err}</h3> : '' }
-        <form onSubmit={this.handleSubmit.bind(this)}>
-          Username:
-          <input type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />
-          <br />
-          Password:
-          <input type="password" value={this.state.passwordField} onChange={this.handlePasswordChange.bind(this)} />
-          <br />
-
-          <input type="submit" value="Submit" disabled={this.state.isSubmitting} />
+      <div className="extension">
+        <h2 className="extension_title">Log in</h2>
+        { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
+        <form className="extension_form" onSubmit={this.handleSubmit.bind(this)}>
+          <input className="extension_input" placeholder="username" type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />
+          <input className="extension_input" placeholder="password" type="password" value={this.state.passwordField} onChange={this.handlePasswordChange.bind(this)} />
+          <a className="extension_password-lost" href="https://floodwatch.me/lostpassword" target="blank">Password lost ?</a>
+          <input className="extension_submit" type="submit" value="Submit" disabled={this.state.isSubmitting} />
+          <p className="extension_signup">Not a Floodwatch user? <a href="https://floodwatch.me/signup" target="blank">Sign up</a></p>
         </form>
       </div>
     );
