@@ -4,18 +4,13 @@ import log from 'loglevel';
 
 import {FWApiClient} from './api';
 import {Filter} from './filter';
+import {FWTabInfo} from './tab';
+
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
 import {FWError, delayedPromise} from '../core/util';
 import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
-
-type Person = {
-  username: string;
-};
-
-let apiClient: FWApiClient;
-let currentPerson: ?Person;
 
 async function loadFilter() {
   try {
@@ -66,22 +61,25 @@ function debugImage(src: string): void {
   }
 }
 
-function recordAdPayload(payload: ApiAdPayload) {
+function recordAdPayload(tabId: number, payload: ApiAdPayload) {
   // Add to the queue
-  apiClient.addAd(payload);
+  FWApiClient.get().addAd(payload);
 
   // Try sending the ads immediately, only happens if there are enough.
-  apiClient.sendAds();
+  FWApiClient.get().sendAds();
+
+  // Increment the ads we've seen from that tab.
+  FWTabInfo.incrTabAdCount(tabId);
 
   // Otherwise, wait for ads.
-  setTimeout(() => apiClient.sendAds(true), FORCE_AD_SEND_TIMEOUT);
+  setTimeout(() => FWApiClient.get().sendAds(true), FORCE_AD_SEND_TIMEOUT);
 }
 
-function onCapturedAdMessage(message: Object) {
+function onCapturedAdMessage(tabId: number, message: Object) {
   const payload: ApiAdPayload = message.payload;
   log.debug('Captured ad!', message);
 
-  recordAdPayload(payload);
+  recordAdPayload(tabId, payload);
 }
 
 // The API used in this is only available to the background script
@@ -123,7 +121,7 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
 
     log.debug('did capture, sending response', dataUrl.length);
 
-    recordAdPayload({
+    recordAdPayload(tabId, {
       ad: adData,
       capture: {
         captureType: 'screenshot',
@@ -140,20 +138,20 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
 async function onLoginMessage(message: any, sendResponse: (obj: any) => void) {
   const payload: { username: string, password: string } = message.payload;
   try {
-    await apiClient.login(payload.username, payload.password);
-    sendResponse({ username: apiClient.username });
+    await FWApiClient.get().login(payload.username, payload.password);
+    sendResponse({ username: FWApiClient.get().username });
   } catch (e) {
     sendResponse({ err: e.message });
   }
 }
 
 function onGetLoginStatusMessage(message: any, sendResponse: (obj: any) => void) {
-  sendResponse({ username: apiClient.username });
+  sendResponse({ username: FWApiClient.get().username });
 }
 
 async function onLogoutMessage(message: any, sendResponse: (obj: any) => void) {
   try {
-    await apiClient.logout();
+    await FWApiClient.get().logout();
     sendResponse({});
   } catch (e) {
     sendResponse({ err: e.message });
@@ -164,19 +162,19 @@ async function onLogoutMessage(message: any, sendResponse: (obj: any) => void) {
 function onChromeMessage(message: any, sender: chrome$MessageSender, sendResponse: (obj: any) => void): boolean {
   log.debug('Got message', message, sender);
 
+  const tabId = sender.tab ? sender.tab.id : undefined;
+  if (!tabId) {
+    log.error('Got message from invalid tabId', tabId);
+    return false;
+  }
+
   if (message.type === 'screenElement') {
     onScreenElementMessage(message, sendResponse);
     return true;
   } else if (message.type === 'capturedAd') {
-    onCapturedAdMessage(message);
+    onCapturedAdMessage(tabId, message);
     return false;
   } else if (message.type === 'captureScreenshot') {
-    const tabId = sender.tab ? sender.tab.id : undefined;
-    if (!tabId) {
-      log.error('Got message from invalid tabId', tabId);
-      return false;
-    }
-
     onCaptureScreenshotMessage(tabId, message, sendResponse);
     return true;
   } else if (message.type === 'getLoginStatus') {
@@ -214,18 +212,21 @@ export async function main() {
   // Staging
   // log.setLevel(log.levels.INFO);
 
-  // Register listeners
-  registerExtension();
-
-  // Create API client
-  apiClient = new FWApiClient('http://floodwatch.me');
-
   try {
-    await apiClient.getCurrentPerson();
+    // Check to see if we're logged in.
+    await FWApiClient.get().getCurrentPerson();
+    log.info('Logged in as', FWApiClient.get().username);
   } catch (e) {
+    log.info('Not logged in, continuing...');
     // Not logged in, move on.
   }
 
   // Load the filter the first time
   await loadFilter();
+
+  // Load tabs into memory
+  await FWTabInfo.loadTabs();
+
+  // Start listeners
+  registerExtension();
 }

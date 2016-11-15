@@ -30,3 +30,5 @@ export const FORCE_AD_SEND_TIMEOUT = 5000;
 
 export const ABP_FILTER_RELOAD_TIME_MINUTES = 60 * 24; // 1 day
 export const ABP_FILTER_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+
+export const FW_API_HOST = 'http://floodwatch.me';

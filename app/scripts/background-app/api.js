@@ -1,7 +1,10 @@
 // @flow
 
 import log from 'loglevel';
+
 import type {ApiAdPayload} from '../core/types';
+import {FWError} from '../core/util';
+import {FW_API_HOST} from '../core/constants';
 
 const NUM_ADS_PER_BATCH = 10;
 
@@ -29,10 +32,23 @@ export class APIClient {
     const url = new URL(path, this.baseUrl);
 
     log.info('POST', path, body);
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      body: body
-    });
+
+    let res;
+    try {
+      res = await fetch(url.toString(), {
+        method: 'POST',
+        body: body
+      });
+    } catch (e) {
+      console.error('Error POSTing', url.toString(), e);
+      throw new FWError('HTTP error');
+    }
+
+    if (!res.ok) {
+      console.error('Error POSTing', url.toString(), await res.text());
+      throw new FWError('HTTP error');
+    }
+
     return res.json();
   }
 
@@ -46,11 +62,24 @@ export class APIClient {
     }
 
     log.info('GET', path, params);
-    const res = await fetch(url.toString(), { method: 'GET' });
+    let res;
+    try {
+      res = await fetch(url.toString(), { method: 'GET' });
+    } catch (e) {
+      console.error('Error GETing', url.toString(), e);
+      throw new FWError('HTTP error');
+    }
+
+    if (!res.ok) {
+      console.error('Error GETing', url.toString(), await res.text());
+      throw new FWError('HTTP error');
+    }
+
     return res.json();
   }
 }
 
+let fwApiClient: ?FWApiClient = null;
 export class FWApiClient extends APIClient {
   username: ?string;
   adQueue: ApiAdPayload[];
@@ -60,6 +89,14 @@ export class FWApiClient extends APIClient {
 
     this.username = null;
     this.adQueue = [];
+  }
+
+  static get(): FWApiClient {
+    if (!fwApiClient) {
+      fwApiClient = new FWApiClient(FW_API_HOST);
+    }
+
+    return fwApiClient;
   }
 
   addAd(ad: ApiAdPayload) {

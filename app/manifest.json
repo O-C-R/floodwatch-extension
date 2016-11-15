@@ -16,9 +16,11 @@
   "permissions": [
     "<all_urls>",
     "alarms",
+    "background",
+    "pageCapture",
+    "storage",
     "tabs",
-    "background",    
-    "pageCapture"
+    "unlimitedStorage"
   ],
   "options_ui": {
     "page": "options.html",
