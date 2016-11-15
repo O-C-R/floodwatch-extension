@@ -254,7 +254,11 @@ export class Frame {
     try {
       log.trace(this.id, 'going to register iframe', iframe);
       const registered = await this.registerChild(iframe);
-      log.debug(this.id, 'did register', iframe);
+      if (registered) {
+        log.debug(this.id, 'did register', iframe);
+      } else {
+        log.debug(this.id, 'did NOT register', iframe);
+      }
     } catch (e) {
       log.debug(this.id, 'error registering iframe', el, e);
     }
@@ -275,7 +279,6 @@ export class Frame {
   }
 
   async screenFrame(el: HTMLIFrameElement) {
-
     const isAd = await this.screenElement(el, this.topUrl);
 
     // Propagate down the screen if it's an iframe

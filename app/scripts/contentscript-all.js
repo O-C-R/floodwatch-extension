@@ -18,7 +18,8 @@ function attachListener() {
   const msgListener = frame.onWindowMessage.bind(frame);
   setInterval(function setupListener() {
     if (!$(document.body).data('fw-frame-id')) {
-      log.info(frameId, 'document body not set in', document);
+      // This notification is important, but it should turn off eventually...
+      // log.info(frameId, 'document body not set in', document);
 
       window.fwFrame = frame;
       $(document.body).attr('data-fw-frame-id', frame.id);
