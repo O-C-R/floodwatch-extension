@@ -382,11 +382,17 @@ export class Frame {
 
     const elems = $(ELEMENT_SELECTOR_NO_FRAMES);
     log.debug(this.id, 'has child images', elems.toArray());
-    elems.toArray().map((el: Element) => promises.push(this.screenElement(el)));
+    elems.toArray().map((el: Element) => {
+      const p = this.screenElement(el).catch((e) => {});
+      promises.push(p);
+    });
 
     const frames = $(ELEMENT_SELECTOR_FRAMES);
     log.debug(this.id, 'has child frames', frames.toArray());
-    frames.toArray().map((el: HTMLIFrameElement) => promises.push(this.screenFrame(el)));
+    frames.toArray().map((el: HTMLIFrameElement) => {
+      const p = this.screenFrame(el).catch((e) => {});
+      promises.push(p);
+    });
 
     return Promise.all(promises);
   }
@@ -395,7 +401,7 @@ export class Frame {
     let lastError, overallError;
     let childFrameId: ?string = null;
 
-    async function register(): Promise<?string> {
+    const register = async (): Promise<?string> => {
       // $FlowIssue: chrome responds to contentWindow
       let win: WindowProxy = el.contentWindow;
       if (!win) {
