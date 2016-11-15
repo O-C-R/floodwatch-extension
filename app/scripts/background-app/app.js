@@ -30,7 +30,7 @@ async function loadFilter() {
   }
 }
 
-function onScreenElementMessage(message: Object, sendResponse: (obj: any) => void): void {
+function onScreenElementMessage(tabId: number, message: Object, sendResponse: (obj: any) => void): void {
   const payload = message.payload;
 
   let isAd: ?boolean = undefined;
@@ -162,22 +162,8 @@ async function onLogoutMessage(message: any, sendResponse: (obj: any) => void) {
 function onChromeMessage(message: any, sender: chrome$MessageSender, sendResponse: (obj: any) => void): boolean {
   log.debug('Got message', message, sender);
 
-  const tabId = sender.tab ? sender.tab.id : undefined;
-  if (!tabId) {
-    log.error('Got message from invalid tabId', tabId);
-    return false;
-  }
-
-  if (message.type === 'screenElement') {
-    onScreenElementMessage(message, sendResponse);
-    return true;
-  } else if (message.type === 'capturedAd') {
-    onCapturedAdMessage(tabId, message);
-    return false;
-  } else if (message.type === 'captureScreenshot') {
-    onCaptureScreenshotMessage(tabId, message, sendResponse);
-    return true;
-  } else if (message.type === 'getLoginStatus') {
+  // Routes that don't need tabId
+  if (message.type === 'getLoginStatus') {
     onGetLoginStatusMessage(message, sendResponse);
     return true;
   } else if (message.type === 'login') {
@@ -185,6 +171,25 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
     return true;
   } else if (message.type === 'logout') {
     onLogoutMessage(message, sendResponse);
+    return true;
+  }
+
+  const tabId = sender.tab ? sender.tab.id : undefined;
+  if (!tabId) {
+    log.error('Got message from invalid tabId', tabId);
+    return false;
+  }
+
+
+  // Routes that need TabId
+  if (message.type === 'screenElement') {
+    onScreenElementMessage(tabId, message, sendResponse);
+    return true;
+  } else if (message.type === 'capturedAd') {
+    onCapturedAdMessage(tabId, message);
+    return false;
+  } else if (message.type === 'captureScreenshot') {
+    onCaptureScreenshotMessage(tabId, message, sendResponse);
     return true;
   }
 
