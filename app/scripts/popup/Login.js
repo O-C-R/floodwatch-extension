@@ -60,7 +60,7 @@ export class Login extends Component {
   render() {
     return (
       <div>
-        <h2>Please log in</h2>
+        <h3>Please log in</h3>
         { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
         <form onSubmit={this.handleSubmit.bind(this)}>
           Username:
@@ -72,6 +72,9 @@ export class Login extends Component {
 
           <input type="submit" value="Submit" disabled={this.state.isSubmitting} />
         </form>
+
+        <br />
+        <div>Or <a href="https://beta.floodwatch.me/register" target="_blank">Sign up</a></div>
       </div>
     );
   }
