@@ -1,0 +1,25 @@
+@import "../framework/index";
+
+.success, .error {
+	width: 100%;
+	border-radius: 0px;
+	color: $color-light;
+	padding: 15px 20px;
+	text-align: center;
+}
+
+.success {
+	background: 1px #7BCA2B;
+	background: #7BCA2B;
+	background: -moz-linear-gradient(right,  #7BCA2B 0%, #03C556 100%);
+	background: -webkit-linear-gradient(right,  #7BCA2B 0%,#03C556 100%);
+	background: linear-gradient(to left,  #7BCA2B 0%,#03C556 100%);
+}
+
+.error {
+	background: 1px #F12B41;
+	background: #F12B41;
+	background: -moz-linear-gradient(right,  #F12B41 0%, #C90118 100%);
+	background: -webkit-linear-gradient(right,  #F12B41 0%,#C90118 100%);
+	background: linear-gradient(to left,  #F12B41 0%,#C90118 100%);
+}

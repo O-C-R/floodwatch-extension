@@ -43,3 +43,7 @@ body {
 		width: calc($screen-sm-min - 100px);
 	}
 }
+
+a:hover {
+	text-transform: underline;
+}

@@ -56,7 +56,7 @@ export class App extends Component {
   }
 
   render() {
-    if (this.state.username) {
+    if (!this.state.username) {
       return (
         <Main
           username={this.state.username}
