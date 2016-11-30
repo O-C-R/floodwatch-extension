@@ -2,6 +2,7 @@
 
 import React, {Component} from 'react';
 import {sendMessageToBackground} from './communication';
+import {FW_WEB_HOST} from '../core/constants';
 
 type Props = {
   handleLogin: (username: string) => void;
@@ -26,7 +27,7 @@ export class Login extends Component {
       err: null,
 
       usernameField: '',
-      passwordField: '',
+      passwordField: ''
     };
   }
 
@@ -59,22 +60,27 @@ export class Login extends Component {
 
   render() {
     return (
-      <div>
-        <h3>Please log in</h3>
-        { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
-        <form onSubmit={this.handleSubmit.bind(this)}>
-          Username:
-          <input type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />
-          <br />
-          Password:
-          <input type="password" value={this.state.passwordField} onChange={this.handlePasswordChange.bind(this)} />
-          <br />
+      <div className="extension">
+        <div className="extension_header">
+          <h1 className="extension_header_logo">Floodwatch</h1>
+        </div>
 
-          <input type="submit" value="Submit" disabled={this.state.isSubmitting} />
-        </form>
+        { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
 
-        <br />
-        <div>Or <a href="https://beta.floodwatch.me/register" target="_blank">Sign up</a></div>
+        <main className="extension_main">
+          <form className="extension_form" onSubmit={this.handleSubmit.bind(this)}>
+            <input className="extension_input" placeholder="username" type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />
+            <input className="extension_input" placeholder="password" type="password" value={this.state.passwordField} onChange={this.handlePasswordChange.bind(this)} />
+            <input className="extension_submit" type="submit" value="Login" disabled={this.state.isSubmitting} />
+            <a className="extension_password-lost" href={`${FW_WEB_HOST}/lostpassword`} target="blank">Password lost ?</a>
+            <p className="extension_signup">Not a Floodwatch user? <a href={`${FW_WEB_HOST}/signup`} target="blank">Sign up</a></p>
+          </form>
+        </main>
+
+        <footer className="extension_footer">
+          <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
+          <p className="extension_footer_version">V 0.1</p>
+        </footer>
       </div>
     );
   }

@@ -4,6 +4,7 @@ import React, {Component} from 'react';
 
 import log from 'loglevel';
 import {sendMessageToBackground} from './communication';
+import {FW_WEB_HOST} from '../core/constants';
 
 type Props = {
   username: string;
@@ -47,12 +48,28 @@ export class Main extends Component {
 
   render() {
     return (
-      <div>
-        <h2>Logged in!</h2>
-        { this.state.err ? <h3 className="err">{this.state.err}</h3> : '' }
-        <form onSubmit={this.handleLogout.bind(this)}>
-          <input type="submit" value="Logout" disabled={this.state.isSubmitting}/>
-        </form>
+      <div className="extension">
+        <div className="extension_header">
+          <h1 className="extension_header_logo">Floodwatch</h1>
+        </div>
+
+        { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
+
+        <main className="extension_main">
+          <form onSubmit={this.handleLogout.bind(this)}>
+            <img className="extension_check" src="images/check.svg" alt=""/>
+            <input
+              className="extension_submit"
+              disabled={this.state.isSubmitting}
+              type="submit"
+              value="Logout" />
+          </form>
+        </main>
+
+        <footer className="extension_footer">
+          <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
+          <p className="extension_footer_version">V 0.1</p>
+        </footer>
       </div>
     );
   }

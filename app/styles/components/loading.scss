@@ -1,0 +1,45 @@
+@import "../framework/index";
+
+.loading {
+	height: 60px;
+	width: 100%;
+
+	@extend .alignXY;
+
+	&::before, &::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		margin-top: -15px;
+		margin-left: -15px;
+
+		height: 30px;
+		width: 30px;
+
+		border-radius: 50%;
+	}
+
+	&::before {
+		border: 2px solid $color-neutral-10;
+	}
+
+	&::after {
+		border: 2px solid transparent;
+		border-top: 2px solid $color-dark;
+
+		animation: spin 1s infinite linear;
+
+		transform-origin: center;
+	}
+}
+
+@keyframes spin {
+ 	from {
+ 		transform: rotate(0deg);
+ 	}
+
+ 	from {
+ 		transform: rotate(-360deg);
+ 	}
+}
