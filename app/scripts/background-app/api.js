@@ -30,75 +30,36 @@ export class APIClient {
     this.baseUrl = baseUrl;
   }
 
-  async post(path: string, body?: Object): Promise<any> {
+  async post(path: string, body?: FormData | string): Promise<Response> {
     const url = new URL(path, this.baseUrl);
-    const data = new FormData();
 
-    if (body) {
-      for (const key in body) {
-        data.append(key, body[key]);
-      }
-    }
-
-    log.info('POST', path, body, data);
+    log.info('POST', path, body, body);
 
     let res;
     try {
       res = await fetch(url.toString(), {
         method: 'POST',
         credentials: 'include',
-        body: data
+        body
       });
     } catch (e) {
-      console.error(e);
-      console.error('Threw while POSTing', url.toString());
+      log.error(e);
+      log.error('Threw while POSTing', url.toString());
       throw new FWError('HTTP error');
     }
 
     if (res.status == 401) {
-      console.error('Bad auth while POSTing', url.toString(), await res.text());
+      log.error('Bad auth while POSTing', url.toString(), await res.text());
       throw new FWAuthenticationError();
     } else if (!res.ok) {
-      console.error('Non-OK response while POSTing', url.toString(), await res.text());
+      log.error('Non-OK response while POSTing', url.toString(), await res.text());
       throw new FWError('HTTP error');
     }
 
-    return res.text();
+    return res;
   }
 
-  async postJSON(path: string, body?: Object): Promise<any> {
-    const url = new URL(path, this.baseUrl);
-
-    log.info('POST JSON', path, body);
-
-    let res;
-    try {
-      res = await fetch(url.toString(), {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-    } catch (e) {
-      console.error(e);
-      console.error('Threw while POSTing', url.toString());
-      throw new FWError('HTTP error');
-    }
-
-    if (res.status == 401) {
-      console.error('Bad auth while POSTing JSON', url.toString(), await res.text());
-      throw new FWAuthenticationError();
-    } else if (!res.ok) {
-      console.error('Non-OK response while POSTing JSON', url.toString(), await res.text());
-      throw new FWError('HTTP error');
-    }
-
-    return res.json();
-  }
-
-  async getJSON(path: string, params?: Object): Promise<any> {
+  async get(path: string, params?: Object): Promise<Response> {
     const url = new URL(path, this.baseUrl);
 
     if (params) {
@@ -108,6 +69,7 @@ export class APIClient {
     }
 
     log.info('GET', path, params);
+
     let res;
     try {
       res = await fetch(url.toString(), {
@@ -115,19 +77,47 @@ export class APIClient {
         credentials: 'include'
       });
     } catch (e) {
-      console.error(e);
-      console.error('Threw while GETing JSON', url.toString());
+      log.error(e);
+      log.error('Threw while GETing', url.toString());
       throw new FWError('HTTP error');
     }
 
     if (res.status == 401) {
-      console.error('Bad auth while GETing JSON', url.toString(), await res.text());
+      log.error('Bad auth while GETing', url.toString(), await res.text());
       throw new FWAuthenticationError();
     } else if (!res.ok) {
-      console.error('Non-OK response while GETing JSON', url.toString(), await res.text());
+      log.error('Non-OK response while GETing', url.toString(), await res.text());
       throw new FWError('HTTP error');
     }
 
+    return res;
+  }
+
+  async postForm(path: string, body?: Object): Promise<string> {
+    const data = new FormData();
+
+    if (body) {
+      for (const key in body) {
+        data.append(key, body[key]);
+      }
+    }
+
+    const res = await this.post(path, data);
+    return res.text();
+  }
+
+  async postJSON(path: string, body?: Object): Promise<any> {
+    const res = await this.post(path, JSON.stringify(body));
+    return res.json();
+  }
+
+  async getText(path: string, params?: Object): Promise<string> {
+    const res = await this.get(path, params);
+    return res.text();
+  }
+
+  async getJSON(path: string, params?: Object): Promise<any> {
+    const res = await this.get(path, params);
     return res.json();
   }
 }
@@ -153,7 +143,7 @@ export class FWApiClient extends APIClient {
     }
   }
 
-  async post(path: string, body?: Object): Promise<any> {
+  async post(path: string, body?: FormData | string): Promise<any> {
     try {
       return super.post(path, body);
     } catch (e) {
@@ -165,21 +155,9 @@ export class FWApiClient extends APIClient {
     }
   }
 
-  async postJSON(path: string, body?: Object): Promise<any> {
+  async get(path: string, params?: Object): Promise<any> {
     try {
-      return super.postJSON(path, body);
-    } catch (e) {
-      if (e instanceof FWAuthenticationError) {
-        this.onAuthError(e);
-      }
-
-      throw e;
-    }
-  }
-
-  async getJSON(path: string, params?: Object): Promise<any> {
-    try {
-      return super.getJSON(path, params);
+      return super.get(path, params);
     } catch (e) {
       if (e instanceof FWAuthenticationError) {
         this.onAuthError(e);
@@ -239,17 +217,17 @@ export class FWApiClient extends APIClient {
   async login(username: string, password: string): Promise<void> {
     try {
       // response has no content, so any non-error means success
-      await this.post('/api/login', { username, password });
+      await this.postForm('/api/login', { username, password });
       await this.getCurrentPerson();
     } catch (e) {
-      console.error('Error logging in:', e);
+      log.error('Error logging in:', e);
       this.username = null;
       throw e;
     }
   }
 
   async logout(): Promise<void> {
-    await this.post('/api/logout');
+    await this.postForm('/api/logout');
     this.username = null;
   }
 }
