@@ -10,6 +10,7 @@ import {setupLogging} from '../core/util';
 
 type State = {
   username: ?string;
+  closeOnLogin: boolean;
 }
 
 export class App extends Component {
@@ -19,8 +20,11 @@ export class App extends Component {
     super();
     setupLogging();
 
+    const closeOnLogin = /closeOnLogin=true/.test(window.location.search);
+
     this.state = {
-      username: null
+      username: null,
+      closeOnLogin
     };
 
     sendMessageToBackground('getLoginStatus', null)
@@ -39,6 +43,14 @@ export class App extends Component {
 
   handleLogin(username: string) {
     this.setState({ username });
+
+    if (this.state.closeOnLogin) {
+      chrome.tabs.getCurrent(function(tab: ?chrome$Tab) {
+        if (tab && tab.id) {
+          chrome.tabs.remove(tab.id, function() {});
+        }
+      });
+    }
   }
 
   render() {
