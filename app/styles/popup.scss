@@ -5,14 +5,18 @@
 @import "components/form";
 @import "components/fonts";
 
-
 .extension {
 	width: 280px;
 	text-align: center;
 
+	&.tab {
+		@extend .alignXY;
+	}
+
 	&_header {
 		padding: 13px 0px;
 		border-bottom: 1px solid $color-neutral-10;
+		background-color: $color-light;
 
 		&_logo{
 			font-weight: bold;
@@ -32,6 +36,7 @@
 		position: relative;
 		padding: 13px 0px;
 		border-top: 1px solid $color-neutral-10;
+		background-color: $color-light;
 
 		&_about, &_version {
 			display: inline;

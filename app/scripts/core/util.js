@@ -3,9 +3,26 @@
 import crypto from 'crypto';
 import log from 'loglevel';
 
-export class TimeoutError extends Error {}
-export class RepeatError extends Error {}
-export class FWError extends Error {}
+// From http://stackoverflow.com/questions/31089801/extending-error-in-javascript-with-es6-syntax
+export class BaseError {
+  name: string;
+  message: string;
+  stack: ?string;
+
+  constructor(message: string = 'Error') {
+    this.name = this.constructor.name;
+    this.message = message;
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, this.constructor);
+    } else {
+      this.stack = (new Error(message)).stack;
+    }
+  }
+}
+
+export class TimeoutError extends BaseError { constructor(m: string = 'TimeoutError') { super(m); } }
+export class RepeatError extends BaseError { constructor(m: string = 'RepeatError') { super(m); } }
+export class FWError extends BaseError { constructor(m?: string = 'FWError') { super(m); } }
 
 export function delayedPromise(time?: ?number): Promise<void> {
   if (time !== null && time !== undefined) {

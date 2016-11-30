@@ -60,11 +60,7 @@ export class Login extends Component {
 
   render() {
     return (
-      <div className="extension">
-        <div className="extension_header">
-          <h1 className="extension_header_logo">Floodwatch</h1>
-        </div>
-
+      <div>
         { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
 
         <main className="extension_main">
@@ -72,15 +68,10 @@ export class Login extends Component {
             <input className="extension_input" placeholder="username" type="text" value={this.state.usernameField} onChange={this.handleUsernameChange.bind(this)} />
             <input className="extension_input" placeholder="password" type="password" value={this.state.passwordField} onChange={this.handlePasswordChange.bind(this)} />
             <input className="extension_submit" type="submit" value="Login" disabled={this.state.isSubmitting} />
-            <a className="extension_password-lost" href={`${FW_WEB_HOST}/lostpassword`} target="blank">Password lost ?</a>
-            <p className="extension_signup">Not a Floodwatch user? <a href={`${FW_WEB_HOST}/signup`} target="blank">Sign up</a></p>
+            <a className="extension_password-lost" href={`${FW_WEB_HOST}/lostpassword`} target="blank">Password lost?</a>
+            <p className="extension_signup">Not a Floodwatch user? <a href={`${FW_WEB_HOST}/signup`} target="blank">Sign up!</a></p>
           </form>
         </main>
-
-        <footer className="extension_footer">
-          <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
-          <p className="extension_footer_version">V 0.1</p>
-        </footer>
       </div>
     );
   }

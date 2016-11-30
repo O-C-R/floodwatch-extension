@@ -108,6 +108,7 @@ gulp.task('watch', (done) => {
   gulp.watch('app/styles/**/*.scss', ['sass']);
   gulp.watch(extraTargets, ['extras']);
   gulp.watch('app/*.html', ['html']);
+  gulp.watch('app/images/**/*', ['images']);
   buildJS(true, done);
 });
 

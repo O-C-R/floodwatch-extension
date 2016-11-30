@@ -4,7 +4,6 @@ import React, {Component} from 'react';
 
 import log from 'loglevel';
 import {sendMessageToBackground} from './communication';
-import {FW_WEB_HOST} from '../core/constants';
 
 type Props = {
   username: string;
@@ -48,11 +47,7 @@ export class Main extends Component {
 
   render() {
     return (
-      <div className="extension">
-        <div className="extension_header">
-          <h1 className="extension_header_logo">Floodwatch</h1>
-        </div>
-
+      <div>
         { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
 
         <main className="extension_main">
@@ -65,11 +60,6 @@ export class Main extends Component {
               value="Logout" />
           </form>
         </main>
-
-        <footer className="extension_footer">
-          <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
-          <p className="extension_footer_version">V 0.1</p>
-        </footer>
       </div>
     );
   }

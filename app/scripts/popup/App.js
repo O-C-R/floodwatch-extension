@@ -7,11 +7,27 @@ import {Main} from './Main';
 import {Login} from './Login';
 import {sendMessageToBackground} from './communication';
 import {setupLogging} from '../core/util';
+import {FW_WEB_HOST} from '../core/constants';
 
 type State = {
   username: ?string;
-  closeOnLogin: boolean;
+  tab: boolean;
 }
+
+const STYLE = `
+html, body {
+    height: 100%;
+    width: 100%;
+
+    position: relative;
+}
+
+body {
+    background-color: #000;
+    background-image: url('images/back.jpg');
+    background-size: cover;
+    background-position: center;
+}`;
 
 export class App extends Component {
   state: State;
@@ -20,11 +36,11 @@ export class App extends Component {
     super();
     setupLogging();
 
-    const closeOnLogin = /closeOnLogin=true/.test(window.location.search);
+    const tab = /tab=true/.test(window.location.search);
 
     this.state = {
       username: null,
-      closeOnLogin
+      tab
     };
 
     sendMessageToBackground('getLoginStatus', null)
@@ -54,17 +70,28 @@ export class App extends Component {
   }
 
   render() {
-    if (this.state.username) {
-      return (
-        <Main
-          username={this.state.username}
-          handleLogout={this.handleLogout.bind(this)} />
-      );
-    } else {
-      return (
-        <Login
-          handleLogin={this.handleLogin.bind(this)} />
-      );
-    }
+    return (
+      <div className={['extension', this.state.tab ? 'tab' : ''].join(' ')}>
+        { this.state.tab && <style>{STYLE}</style> }
+
+        <div className="extension_header">
+          <h1 className="extension_header_logo">Floodwatch</h1>
+        </div>
+
+        { this.state.username ?
+          <Main
+            username={this.state.username}
+            handleLogout={this.handleLogout.bind(this)} />
+          :
+          <Login
+            handleLogin={this.handleLogin.bind(this)} />
+        }
+
+        <footer className="extension_footer">
+          <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
+          <p className="extension_footer_version">V 0.1</p>
+        </footer>
+      </div>
+    );
   }
 }
