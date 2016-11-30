@@ -7,7 +7,7 @@ import * as _ from 'lodash';
 import log from 'loglevel';
 
 import {Frame} from './frame';
-import {TYPE_MAP, ELEMENT_SELECTOR, CAPTURE_THRESHOLD, SCROLL_WAIT_TIME, FRAME_LOAD_WAIT_TIME} from '../core/constants';
+import {TYPE_MAP, CAPTURE_THRESHOLD, SCROLL_WAIT_TIME} from '../core/constants';
 import {pollUntil, generateUUID, delayedPromise, FWError} from '../core/util';
 import {serializeImageElement, serializeCanvasElement} from '../core/images';
 import {findSelfOrChildBySize, outerArea, Rect} from '../core/shapes';
@@ -222,7 +222,7 @@ export class AdElement {
         resolve();
       } else {
         // Image has yet to load, wait for that to happen.
-        this.$el.on('load', resolve).on('error', e => reject(new FWError('Error on image load')));
+        this.$el.on('load', resolve).on('error', () => reject(new FWError('Error on image load')));
       }
     });
   }
@@ -265,7 +265,7 @@ export class AdElement {
     }
   }
 
-  async requestScreenshotRelative(target: Element, innerRect: ?Rect, options?: CaptureOptions): Promise<boolean> {
+  async requestScreenshotRelative(target: Element/*, innerRect: ?Rect*/): Promise<boolean> {
     return new Promise((resolve, reject) => {
       const rect = Rect.forElement(target);
 
@@ -311,21 +311,22 @@ export class AdElement {
 
     // The rect is not the largest container - bump this request up a node.
     if (!rect.isAbsolute) {
-      try {
-        // await this.frame.
-      } catch (e) {
-        log.error(e);
-        throw new FWError('Error capturing in parent!');
-      } finally {
-        throw new FWError('Captured in parent!');
-      }
+      throw new FWError('Subframe capture not implemented yet.');
+      // try {
+      //   // await this.frame.
+      // } catch (e) {
+      //   log.error(e);
+      //   throw new FWError('Error capturing in parent!');
+      // } finally {
+      //   throw new FWError('Captured in parent!');
+      // }
     }
 
     // Rect is not visible, wait for it to be still in the screen.
     const scrolledRecently = new Date() - this.frame.lastScrollTime < SCROLL_WAIT_TIME;
     const isInView = Rect.forWindow(rect.window).contains(rect);
     if (scrolledRecently || !isInView) {
-      await new Promise((resolve, reject) => {
+      await new Promise((resolve) => {
         let scrollTimer: ?number = null;
 
         const scrollDone = () => {

@@ -2,15 +2,17 @@
 
 import log from 'loglevel';
 
-import {FWApiClient} from './api';
+import {FWApiClient, FWAuthenticationError} from './api';
 import {Filter} from './filter';
 import {FWTabInfo} from './tab';
 
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
-import {FWError, delayedPromise} from '../core/util';
-import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS} from '../core/constants';
+import {FWError, setupLogging} from '../core/util';
+import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS, FW_API_HOST} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
+
+let fwApiClient: FWApiClient;
 
 async function loadFilter() {
   try {
@@ -39,7 +41,7 @@ function onScreenElementMessage(tabId: number, message: Object, sendResponse: (o
   try {
     const isAdObj = Filter.get().isAd({
       html: payload.html,
-      topUrl: payload.topUrl,
+      topUrl: FWTabInfo.getTabAdUrl(tabId) || payload.topUrl,
       mediaType: payload.mediaType,
       urls: payload.urls || []
     });
@@ -62,17 +64,19 @@ function debugImage(src: string): void {
 }
 
 function recordAdPayload(tabId: number, payload: ApiAdPayload) {
+  payload.ad.topUrl = FWTabInfo.getTabAdUrl(tabId) || payload.ad.topUrl;
+
   // Add to the queue
-  FWApiClient.get().addAd(payload);
+  fwApiClient.addAd(payload);
 
   // Try sending the ads immediately, only happens if there are enough.
-  FWApiClient.get().sendAds();
+  fwApiClient.sendAds();
 
   // Increment the ads we've seen from that tab.
   FWTabInfo.incrTabAdCount(tabId);
 
   // Otherwise, wait for ads.
-  setTimeout(() => FWApiClient.get().sendAds(true), FORCE_AD_SEND_TIMEOUT);
+  setTimeout(() => fwApiClient.sendAds(true), FORCE_AD_SEND_TIMEOUT);
 }
 
 function onCapturedAdMessage(tabId: number, message: Object) {
@@ -138,20 +142,23 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
 async function onLoginMessage(message: any, sendResponse: (obj: any) => void) {
   const payload: { username: string, password: string } = message.payload;
   try {
-    await FWApiClient.get().login(payload.username, payload.password);
-    sendResponse({ username: FWApiClient.get().username });
+    await fwApiClient.login(payload.username, payload.password);
+    log.info('Logged in! Responding with', { username: fwApiClient.username });
+    onLogin();
+
+    sendResponse({ username: fwApiClient.username });
   } catch (e) {
     sendResponse({ err: e.message });
   }
 }
 
 function onGetLoginStatusMessage(message: any, sendResponse: (obj: any) => void) {
-  sendResponse({ username: FWApiClient.get().username });
+  sendResponse({ username: fwApiClient.username });
 }
 
 async function onLogoutMessage(message: any, sendResponse: (obj: any) => void) {
   try {
-    await FWApiClient.get().logout();
+    await fwApiClient.logout();
     sendResponse({});
   } catch (e) {
     sendResponse({ err: e.message });
@@ -196,9 +203,48 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
   return false;
 }
 
+let loginTabId: ?number = null;
+function onUnexpectedLogout() {
+  if (loginTabId === null) {
+    chrome.tabs.create({ url : "popup.html?tab=true" }, function(tab: chrome$Tab) {
+      if (tab.id !== undefined && tab.id >= 0) {
+        loginTabId = tab.id;
+      }
+
+      const removedListener = function(tabId: number) {
+        if (tabId === loginTabId) {
+          loginTabId = null;
+
+          // $FlowIssue
+          chrome.tabs.onRemoved.removeListener(removedListener);
+        }
+      }
+      chrome.tabs.onRemoved.addListener(removedListener);
+
+      const updatedListener = function(tabId: number, changeInfo: { url?: string }) {
+        if (tabId === loginTabId && changeInfo.url) {
+          const newUrl = changeInfo.url;
+          if (!/popup.html/.test(newUrl)) {
+            loginTabId = null;
+
+            // $FlowIssue
+            chrome.tabs.onRemoved.removeListener(updatedListener);
+          }
+        }
+      }
+      chrome.tabs.onUpdated.addListener(updatedListener);
+    });
+  }
+}
+
+function onLogin() {
+  if (loginTabId !== null && loginTabId !== undefined) {
+    chrome.tabs.remove(loginTabId);
+  }
+}
+
 // $FlowIssue: chrome$Alarm is correct here
 async function onChromeAlarm(alarm: chrome$Alarm) {
-  console.log(alarm);
   if (alarm.name == 'reloadFilter') {
     await loadFilter();
   }
@@ -211,19 +257,19 @@ function registerExtension() {
 }
 
 export async function main() {
-  // Debug
-  log.setLevel(log.levels.TRACE);
+  setupLogging();
 
-  // Staging
-  // log.setLevel(log.levels.INFO);
+  fwApiClient = new FWApiClient(FW_API_HOST, onUnexpectedLogout);
 
   try {
     // Check to see if we're logged in.
-    await FWApiClient.get().getCurrentPerson();
-    log.info('Logged in as', FWApiClient.get().username);
+    await fwApiClient.getCurrentPerson();
+    log.info('Logged in as', fwApiClient.username);
   } catch (e) {
-    log.info('Not logged in, continuing...');
-    // Not logged in, move on.
+    log.info('Not logged in, the login screen should have popped up...');
+    if (e instanceof FWAuthenticationError) {
+      onUnexpectedLogout();
+    }
   }
 
   // Load the filter the first time

@@ -3,14 +3,13 @@
 // import * as _ from 'lodash';
 import $ from 'jquery';
 import MutationSummary from 'mutation-summary';
-import * as _ from 'lodash';
 import log from 'loglevel';
 
 import {AdElement} from './ad';
 
 import {ensureFrameLoaded} from '../core/dom';
-import {ELEMENT_SELECTOR_FRAMES, ELEMENT_SELECTOR_NO_FRAMES, CAPTURE_ERROR_MARGIN_PX} from '../core/constants';
-import {FWError, promiseTimeout, tryRepeat, generateUUID, TimeoutError} from '../core/util';
+import {ELEMENT_SELECTOR_FRAMES, ELEMENT_SELECTOR_NO_FRAMES} from '../core/constants';
+import {promiseTimeout, tryRepeat, generateUUID} from '../core/util';
 import {findElementBySize} from '../core/shapes';
 import type {ApiAdPayload} from '../core/types';
 
@@ -236,46 +235,7 @@ export class Frame {
     }
   }
 
-  async addFrameChild(el: Element) {
-    // Cast
-    const iframe = ((el: any): HTMLIFrameElement);
-
-    if (this.findChildByElement(el)) {
-      throw new FWError('Frame already added!');
-    }
-
-    const frameChild: FrameChild = {
-      element: iframe
-    };
-
-    this.frameChildren.push(frameChild);
-
-    // Register frame first
-    try {
-      log.trace(this.id, 'going to register iframe', iframe);
-      const registered = await this.registerChild(iframe);
-      log.debug(this.id, 'did register', iframe);
-    } catch (e) {
-      log.debug(this.id, 'error registering iframe', el, e);
-    }
-
-    if (this.safeToScreen) {
-      // If we're okay to screen, do it.
-      try {
-        log.trace(this.id, 'going to screen iframe', iframe);
-        await this.screenFrame(iframe, this.topUrl);
-        log.debug(this.id, 'did screen iframe', iframe);
-      } catch (e) {
-        log.error(this.id, 'error screening iframe', el, e);
-      }
-    } else {
-      log.debug(this.id, 'not ready to screen iframe', iframe);
-    }
-
-  }
-
   async screenFrame(el: HTMLIFrameElement) {
-
     const isAd = await this.screenElement(el, this.topUrl);
 
     // Propagate down the screen if it's an iframe
@@ -299,7 +259,11 @@ export class Frame {
     try {
       log.trace(this.id, 'going to register iframe', iframe);
       const registered = await this.registerChild(iframe);
-      log.debug(this.id, 'did register', iframe);
+      if (registered) {
+        log.debug(this.id, 'did register', iframe);
+      } else {
+        log.debug(this.id, 'did NOT register', iframe);
+      }
     } catch (e) {
       log.error(this.id, 'error registering iframe', el, e);
     }
@@ -320,26 +284,23 @@ export class Frame {
 
   async handleElementMutation(el: Element) {
     try {
-      const isAd = await this.screenElement(el, this.topUrl);
+      await this.screenElement(el, this.topUrl);
     } catch (e) {
       log.error(this.id, 'error screening', el);
     }
   }
 
   startFrameMutationObserver() {
-    log.trace(this.id, 'STARTING FRAME MUTATION');
+    log.trace(this.id, 'STARTING FRAME MUTATION LISTENER');
 
-    const observer = new MutationSummary({
+    new MutationSummary({
       callback: (a: MutationElementResponse[]) => {
         log.trace('GOT IFRAME MUTATION', a);
 
         const addedRes: MutationElementResponse = a[0];
-        const changedRes: ?MutationElementResponse = a[0];
-        // const handled: Set<Element> = new Set();
 
         // Start pinging new visible iframes
         for (const el of addedRes.added) {
-          // handled.add(el);
           // TODO: can we skip some invisible elements here?
           this.handleIFrameMutation(el);
         }
@@ -351,7 +312,7 @@ export class Frame {
 
   startElementMutationObserver() {
     log.trace(this.id, 'STARTING ELEMENT MUTATION');
-    const observer = new MutationSummary({
+    new MutationSummary({
       callback: (a) => {
         const res: MutationElementResponse = a[0];
         for (const el of res.added) {
@@ -383,14 +344,14 @@ export class Frame {
     const elems = $(ELEMENT_SELECTOR_NO_FRAMES);
     log.debug(this.id, 'has child images', elems.toArray());
     elems.toArray().map((el: Element) => {
-      const p = this.screenElement(el).catch((e) => {});
+      const p = this.screenElement(el).catch(() => {});
       promises.push(p);
     });
 
     const frames = $(ELEMENT_SELECTOR_FRAMES);
     log.debug(this.id, 'has child frames', frames.toArray());
     frames.toArray().map((el: HTMLIFrameElement) => {
-      const p = this.screenFrame(el).catch((e) => {});
+      const p = this.screenFrame(el).catch(() => {});
       promises.push(p);
     });
 
@@ -452,14 +413,17 @@ export class Frame {
     const selector = 'iframe:not([data-fw-frame-id]),frame:not([data-fw-frame-id])';
 
     const promises = ($(this.doc).find(selector).toArray(): HTMLIFrameElement[])
-      .map((el: Element) => { (async () => {
-        const iframeElement = ((el: any): HTMLIFrameElement);
-        try {
-          return this.registerChild(iframeElement);
-        } catch (e) {
-          // Ignore
-        }
-      })(); });
+      .map((el: Element) => {
+        // TODO: this is really ugly!
+        (async () => {
+          const iframeElement = ((el: any): HTMLIFrameElement);
+          try {
+            return this.registerChild(iframeElement);
+          } catch (e) {
+            // Ignore
+          }
+        })();
+      });
 
     return Promise.all(promises);
   }
@@ -468,7 +432,7 @@ export class Frame {
     return this.requestWindow(win, 'setRegistered', { registered: true }, options);
   }
 
-  setRegisteredHandler(req: WindowRequest): Promise<WindowSetRegisteredResponsePayload> {
+  setRegisteredHandler(): Promise<WindowSetRegisteredResponsePayload> {
     this.registeredWithParent = true;
     return Promise.resolve({ id: this.id });
   }
@@ -487,23 +451,12 @@ export class Frame {
     return this.requestWindow(win, 'startScreen', {}, options);
   }
 
-  async startScreenHandler(req: WindowRequest): Promise<StartScreenResponsePayload> {
+  async startScreenHandler(): Promise<StartScreenResponsePayload> {
     await this.startScreen();
     return { done: true };
   }
 
-  // async queryOuterAreasOfElementsMatching(win: WindowProxy, selector: string, options: WindowRequestOptions = {}): Promise<{ areas: number[] }> {
-  //   const res = await this.requestWindow(win, 'outerAreas', { selector }, options)
-  //   const payload: OuterAreasResponsePayload = res.payload;
-  //
-  //   return payload.areas;
-  // }
-
   async captureFillGraphic(el: HTMLIFrameElement, dimensions: { width: number, height: number }, options: WindowRequestOptions = {}): Promise<boolean> {
-    // if (!$(el).data('fw-frame-id')) {
-    //   return Promise.reject('IFrame not registered.');
-    // }
-
     try {
       // $FlowIssue: contentWindow is valid
       const win: WindowProxy = el.contentWindow;
@@ -556,7 +509,7 @@ export class Frame {
     return this.requestWindow(win, 'childrenDoneLoading', {}, options);
   }
 
-  async areChildrenDoneLoadingHandler(req: WindowRequest): Promise<ChildrenDoneLoadingResponsePayload> {
+  async areChildrenDoneLoadingHandler(): Promise<ChildrenDoneLoadingResponsePayload> {
     const children: HTMLIFrameElement[] = $(ELEMENT_SELECTOR_FRAMES).toArray();
 
     log.debug(this.id, 'going to wait for', children, 'to load');
@@ -598,7 +551,7 @@ export class Frame {
     // Wait for children to respond to ping
     await Promise.all(responding.map(c => {
       return this.areChildrenDoneLoading(c, { timeout: 1000 })
-        .catch((e) => { /* ignore */ });
+        .catch(() => { /* ignore */ });
     }));
 
     log.debug(this.id, 'all done with responding children', responding);

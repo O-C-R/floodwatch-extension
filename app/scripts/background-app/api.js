@@ -21,6 +21,8 @@ export type PersonResponse = {
   username: string;
 }
 
+export class FWAuthenticationError extends FWError { constructor(m: string = 'AuthenticationError') { super(m); } }
+
 export class APIClient {
   baseUrl: string;
 
@@ -28,24 +30,68 @@ export class APIClient {
     this.baseUrl = baseUrl;
   }
 
-  async postJSON(path: string, body?: Object): Promise<any> {
+  async post(path: string, body?: Object): Promise<any> {
     const url = new URL(path, this.baseUrl);
+    const data = new FormData();
 
-    log.info('POST', path, body);
+    if (body) {
+      for (const key in body) {
+        data.append(key, body[key]);
+      }
+    }
+
+    log.info('POST', path, body, data);
 
     let res;
     try {
       res = await fetch(url.toString(), {
         method: 'POST',
-        body: body
+        credentials: 'include',
+        body: data
       });
     } catch (e) {
-      console.error('Error POSTing', url.toString(), e);
+      console.error(e);
+      console.error('Threw while POSTing', url.toString());
       throw new FWError('HTTP error');
     }
 
-    if (!res.ok) {
-      console.error('Error POSTing', url.toString(), await res.text());
+    if (res.status == 401) {
+      console.error('Bad auth while POSTing', url.toString(), await res.text());
+      throw new FWAuthenticationError();
+    } else if (!res.ok) {
+      console.error('Non-OK response while POSTing', url.toString(), await res.text());
+      throw new FWError('HTTP error');
+    }
+
+    return res.text();
+  }
+
+  async postJSON(path: string, body?: Object): Promise<any> {
+    const url = new URL(path, this.baseUrl);
+
+    log.info('POST JSON', path, body);
+
+    let res;
+    try {
+      res = await fetch(url.toString(), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (e) {
+      console.error(e);
+      console.error('Threw while POSTing', url.toString());
+      throw new FWError('HTTP error');
+    }
+
+    if (res.status == 401) {
+      console.error('Bad auth while POSTing JSON', url.toString(), await res.text());
+      throw new FWAuthenticationError();
+    } else if (!res.ok) {
+      console.error('Non-OK response while POSTing JSON', url.toString(), await res.text());
       throw new FWError('HTTP error');
     }
 
@@ -64,14 +110,21 @@ export class APIClient {
     log.info('GET', path, params);
     let res;
     try {
-      res = await fetch(url.toString(), { method: 'GET' });
+      res = await fetch(url.toString(), {
+        method: 'GET',
+        credentials: 'include'
+      });
     } catch (e) {
-      console.error('Error GETing', url.toString(), e);
+      console.error(e);
+      console.error('Threw while GETing JSON', url.toString());
       throw new FWError('HTTP error');
     }
 
-    if (!res.ok) {
-      console.error('Error GETing', url.toString(), await res.text());
+    if (res.status == 401) {
+      console.error('Bad auth while GETing JSON', url.toString(), await res.text());
+      throw new FWAuthenticationError();
+    } else if (!res.ok) {
+      console.error('Non-OK response while GETing JSON', url.toString(), await res.text());
       throw new FWError('HTTP error');
     }
 
@@ -83,20 +136,57 @@ let fwApiClient: ?FWApiClient = null;
 export class FWApiClient extends APIClient {
   username: ?string;
   adQueue: ApiAdPayload[];
+  unauthorizedHandler: () => void;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, unauthorizedHandler: () => void) {
     super(baseUrl);
 
     this.username = null;
     this.adQueue = [];
+    this.unauthorizedHandler = unauthorizedHandler;
   }
 
-  static get(): FWApiClient {
-    if (!fwApiClient) {
-      fwApiClient = new FWApiClient(FW_API_HOST);
+  onAuthError(e: FWAuthenticationError) {
+    if (this.username != null) {
+      this.unauthorizedHandler();
+      this.username = null;
     }
+  }
 
-    return fwApiClient;
+  async post(path: string, body?: Object): Promise<any> {
+    try {
+      return super.post(path, body);
+    } catch (e) {
+      if (e instanceof FWAuthenticationError) {
+        this.onAuthError(e);
+      }
+
+      throw e;
+    }
+  }
+
+  async postJSON(path: string, body?: Object): Promise<any> {
+    try {
+      return super.postJSON(path, body);
+    } catch (e) {
+      if (e instanceof FWAuthenticationError) {
+        this.onAuthError(e);
+      }
+
+      throw e;
+    }
+  }
+
+  async getJSON(path: string, params?: Object): Promise<any> {
+    try {
+      return super.getJSON(path, params);
+    } catch (e) {
+      if (e instanceof FWAuthenticationError) {
+        this.onAuthError(e);
+      }
+
+      throw e;
+    }
   }
 
   addAd(ad: ApiAdPayload) {
@@ -118,7 +208,15 @@ export class FWApiClient extends APIClient {
       return { ads: [] };
     }
 
-    return this.postJSON('/api/ads', { ads: adSlice });
+    try {
+      return this.postJSON('/api/ads', { ads: adSlice });
+    } catch (e) {
+      if (e instanceof FWAuthenticationError) {
+        this.username = null;
+      }
+
+      throw e;
+    }
   }
 
   // TODO: implement when the server implements it
@@ -141,8 +239,8 @@ export class FWApiClient extends APIClient {
   async login(username: string, password: string): Promise<void> {
     try {
       // response has no content, so any non-error means success
-      const res: PersonResponse = await this.postJSON('/api/login', { username, password });
-      this.username = res.username;
+      await this.post('/api/login', { username, password });
+      await this.getCurrentPerson();
     } catch (e) {
       console.error('Error logging in:', e);
       this.username = null;
@@ -150,7 +248,8 @@ export class FWApiClient extends APIClient {
     }
   }
 
-  logout(): Promise<void> {
-    return this.postJSON('/api/logout');
+  async logout(): Promise<void> {
+    await this.post('/api/logout');
+    this.username = null;
   }
 }

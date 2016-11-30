@@ -2,6 +2,7 @@
 
 import React, {Component} from 'react';
 
+import log from 'loglevel';
 import {sendMessageToBackground} from './communication';
 
 type Props = {
@@ -28,17 +29,37 @@ export class Main extends Component {
 
   handleLogout(event: Event) {
     event.preventDefault();
-    this.props.handleLogout();
+    log.debug('Logging out...');
+
+    this.setState({ isSubmitting: true });
+
+    sendMessageToBackground('logout', null)
+    .then((res: { err?: string }) => {
+      log.debug('Logout response', res);
+      this.setState({ isSubmitting: false });
+      if (!res.err) {
+        this.props.handleLogout();
+      } else {
+        this.setState({ err: res.err });
+      }
+    });
   }
 
   render() {
     return (
       <div>
-        <h2>Logged in!</h2>
-        { this.state.err ? <h3 class="err">{this.state.err}</h3> : '' }
-        <form onSubmit={this.handleLogout.bind(this)}>
-          <input type="submit" value="Logout" />
-        </form>
+        { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
+
+        <main className="extension_main">
+          <form onSubmit={this.handleLogout.bind(this)}>
+            <img className="extension_check" src="images/check.svg" alt=""/>
+            <input
+              className="extension_submit"
+              disabled={this.state.isSubmitting}
+              type="submit"
+              value="Logout" />
+          </form>
+        </main>
       </div>
     );
   }

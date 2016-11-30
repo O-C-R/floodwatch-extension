@@ -1,6 +1,19 @@
 # Floodwatch
 
-https://floodwatch.ocr.nyc/
+Site: https://floodwatch.me/
+Extension: coming soon!
+Read more: https://backchannel.com/you-are-not-your-browser-history-cdff623a3b24
+
+### Developing
+
+Install prereqs:
+- [Node](https://nodejs.org/)
+- [Yarn](https://yarnpkg.com/)
+- `yarn install`
+
+Compile: `yarn build`
+Watch: `yarn watch`
+For upload to Chrome web store: `yarn package`
 
 ### Credits
 

@@ -1,3 +1,101 @@
-.err {
-  color: #f00;
+@import "framework/index";
+
+@import "components/feedback";
+@import "components/loading";
+@import "components/form";
+@import "components/fonts";
+
+.extension {
+	width: 280px;
+	text-align: center;
+
+	&.tab {
+		@extend .alignXY;
+	}
+
+	&_header {
+		padding: 13px 0px;
+		border-bottom: 1px solid $color-neutral-10;
+		background-color: $color-light;
+
+		&_logo{
+			font-weight: bold;
+			font-family: sans-serif;
+			font-size: 13px;
+			letter-spacing: 0.1em;
+			text-transform: uppercase;
+		}
+	}
+
+	&_main {
+		padding: 10px 0;
+		background: $color-neutral-3;
+	}
+
+	&_footer {
+		position: relative;
+		padding: 13px 0px;
+		border-top: 1px solid $color-neutral-10;
+		background-color: $color-light;
+
+		&_about, &_version {
+			display: inline;
+			margin: 0 10px;
+			color: $color-dark;
+			font-size: 11px;
+		}
+
+		&_version {
+			@extend .alignY;
+			right: 10px;
+
+			color: $color-neutral-40;
+		}
+	}
+
+	&_form {
+		padding: 0 20px;
+	}
+
+	&_input {
+		@extend .input;
+		width: 100%;
+	}
+
+	&_submit {
+		@extend .btn;
+	}
+
+	&_signup, &_password-lost {
+		text-align: center;
+		margin: 3px 0;
+		color: $color-neutral-40;
+		font-size: 11px;
+
+		a {
+			color: $color-dark;
+
+			&:hover {
+				text-decoration: underline;
+			}
+		}
+	}
+
+	&_password-lost {
+		text-align: center;
+		margin: 3px 2px;
+		color: $color-dark;
+		font-size: 11px;
+		display: block;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
+	&_check {
+		display: block;
+		margin: 10px auto;
+		width: 80px;
+	}
 }

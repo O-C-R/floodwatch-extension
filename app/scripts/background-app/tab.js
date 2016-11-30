@@ -15,7 +15,7 @@ export class FWTabInfo {
   }
 
   static loadTabs(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       function createTabInfo(tab: chrome$Tab) {
         if (tab.id !== undefined && tab.id >= 0 && tab.url !== undefined) {
           const tabInfo = new FWTabInfo(tab.id);
@@ -30,7 +30,7 @@ export class FWTabInfo {
           createTabInfo(tab);
         }
 
-        chrome.tabs.onRemoved.addListener((tabId: number, removeInfo: Object) => {
+        chrome.tabs.onRemoved.addListener((tabId: number) => {
           delete allTabs[tabId.toString()];
         });
 
@@ -67,6 +67,15 @@ export class FWTabInfo {
     }
   }
 
+  static getTabAdUrl(tabId: number): ?string {
+    const tabInfo: ?FWTabInfo = allTabs[tabId.toString()];
+    if (!tabInfo) {
+      return null;
+    } else {
+      return tabInfo.url;
+    }
+  }
+
   constructor(tabId: number) {
     this.tabId = tabId;
     this.capturedAdCount = 0;
@@ -93,11 +102,8 @@ export class FWTabInfo {
   }
 
   updateStorage() {
-    log.debug('incrementing', this.getStorageCountId());
     const data = {};
     data[this.getStorageCountId()] = this.capturedAdCount;
-    chrome.storage.local.set(data, () => {
-      log.debug('done incrementing', this.getStorageCountId());
-    });
+    chrome.storage.local.set(data, () => {});
   }
 }

@@ -1,0 +1,49 @@
+@import "variables";
+@import "utils";
+
+* {
+	font-size: inherit;
+	font-family: inherit;
+	color: inherit;
+	font-weight: inherit;
+	text-rendering: optimizeLegibility;
+	box-sizing: border-box;
+}
+
+body {
+	background: $default-background;
+	font-size: $default-font-size;
+	line-height: $default-font-lh;
+	font-family: $default-font;
+	color: $default-font-color;
+}
+
+.container {
+	width: 100%;
+	padding: 0 40px;
+	margin: 0 auto;
+
+	@include clearfix;
+}
+
+@media (min-width: $screen-sm-min) {
+	.container {
+		width: calc($screen-sm-min - 100px);
+	}
+}
+
+@media (min-width: $screen-md-min) {
+	.container {
+		width: calc($screen-sm-min - 100px);
+	}
+}
+
+@media (min-width: $screen-lg-min) {
+	.container {
+		width: calc($screen-sm-min - 100px);
+	}
+}
+
+a:hover {
+	text-transform: underline;
+}

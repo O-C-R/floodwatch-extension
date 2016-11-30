@@ -1,17 +1,15 @@
 // @flow
 
-import $ from 'jquery';
-
 import {FWError} from './util';
 
 export function getFrameDocument(el: Element): ?Document {
-   try {
+  try {
      // $FlowIssue: Chrome responds to contentDocument
-     return el.contentDocument;
-   } catch (e) {
-     return null;
-   }
- }
+    return el.contentDocument;
+  } catch (e) {
+    return null;
+  }
+}
 
 // $FlowIgnore: this actually is what we want
 export function ensureFrameLoaded(el: Element): Promise<boolean> {
@@ -22,7 +20,7 @@ export function ensureFrameLoaded(el: Element): Promise<boolean> {
       if (innerDoc.readyState != 'complete') {
         // iframe is not done loading.
 
-        const readyStateChangeListener = (event: Event) => {
+        const readyStateChangeListener = () => {
           if (innerDoc.readyState == 'complete') {
             innerDoc.removeEventListener('readystatechange', readyStateChangeListener);
             resolve(true);

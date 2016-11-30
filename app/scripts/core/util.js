@@ -1,10 +1,28 @@
 // @flow
 
 import crypto from 'crypto';
+import log from 'loglevel';
 
-export class TimeoutError extends Error {}
-export class RepeatError extends Error {}
-export class FWError extends Error {}
+// From http://stackoverflow.com/questions/31089801/extending-error-in-javascript-with-es6-syntax
+export class BaseError {
+  name: string;
+  message: string;
+  stack: ?string;
+
+  constructor(message: string = 'Error') {
+    this.name = this.constructor.name;
+    this.message = message;
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, this.constructor);
+    } else {
+      this.stack = (new Error(message)).stack;
+    }
+  }
+}
+
+export class TimeoutError extends BaseError { constructor(m: string = 'TimeoutError') { super(m); } }
+export class RepeatError extends BaseError { constructor(m: string = 'RepeatError') { super(m); } }
+export class FWError extends BaseError { constructor(m?: string = 'FWError') { super(m); } }
 
 export function delayedPromise(time?: ?number): Promise<void> {
   if (time !== null && time !== undefined) {
@@ -88,7 +106,7 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
           setTimeout(poll, delay);
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (!timedOut) {
           setTimeout(poll, delay);
         }
@@ -108,4 +126,15 @@ export function tryUntil<T>(cb: <T>() => Promise<?T>, wait: number, delay: numbe
 
 export function generateUUID(): string {
   return crypto.randomBytes(20).toString('hex');
+}
+
+export function setupLogging(): void {
+  chrome.storage.sync.get('logLevel', (res: { logLevel: ?number }) => {
+    log.setLevel(res.logLevel != undefined ? res.logLevel : log.levels.SILENT);
+  });
+  chrome.storage.onChanged.addListener((changes: Object) => {
+    if (changes.logLevel !== undefined && changes.logLevel.newValue !== undefined) {
+      log.setLevel(changes.logLevel.newValue);
+    }
+  });
 }

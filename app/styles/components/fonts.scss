@@ -1,0 +1,49 @@
+@import "../framework/index";
+
+// ALL
+.font-h1, .font-h2, .font-h3, .font-label, .font-link, .font-little {
+	color: $color-dark;
+	
+
+	&.inverted {
+		color: $color-light;
+	}
+}
+
+// TITLES
+.font-h1, .font-h2, .font-h3, .font-label {
+	font-family: $font-title;
+}
+
+// TEXTS
+.font-link, .font-little {
+	font-family: $font-text;
+}
+
+// H1
+.font-h1 {
+
+}
+
+.font-h2 {
+
+}
+
+.font-label {
+	font-size: 13px;
+	font-weight: bold;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.font-link {
+	cursor: pointer;
+
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
+.font-little {
+	font-size: 11px;
+}

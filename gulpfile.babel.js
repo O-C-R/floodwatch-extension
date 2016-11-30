@@ -18,16 +18,17 @@ import watchify from 'watchify';
 import sass from 'gulp-sass';
 
 const $ = gulpLoadPlugins();
+const extraTargets = [
+  'app/*.*',
+  'app/_locales/**',
+  'app/styles/*.css',
+  '!app/scripts',
+  '!app/*.html'
+];
 let watching = false;
 
 gulp.task('extras', () => {
-  return gulp.src([
-    'app/*.*',
-    'app/_locales/**',
-    'app/styles/*.css',
-    '!app/scripts',
-    '!app/*.html'
-  ], {
+  return gulp.src(extraTargets, {
     base: 'app',
     dot: true
   }).pipe(gulp.dest('dist'));
@@ -57,13 +58,14 @@ function buildJS(watch: boolean, done: Function) {
         fullPaths: true
       })
       .transform(babelify, { sourceMaps: true, sourceMapsAbsolute: false })
-      .plugin(watchify)
       .on('error', function(err){
-        // print the error (can replace with gulp-util)
-        console.log(err.message);
-        // end this stream
+        console.error(err.message);
         this.emit('end');
       });
+
+      if (watch) {
+        b.plugin(watchify);
+      }
 
       const bundle = () => {
         if (watch) {
@@ -72,9 +74,7 @@ function buildJS(watch: boolean, done: Function) {
 
         const s = b.bundle()
           .on('error', function(err){
-            // print the error (can replace with gulp-util)
-            console.log(err.message);
-            // end this stream
+            console.error(err.message);
             this.emit('end');
           })
           .pipe(source(path.basename(entry)))
@@ -88,12 +88,8 @@ function buildJS(watch: boolean, done: Function) {
           s.on('end', () => console.log('Done rebundling:', entry));
         }
 
-        // s.on('error', console.error);
-
         return s;
       };
-
-      // b.on('error', console.error);
 
       if (watch) {
         b.on('update', bundle);
@@ -102,12 +98,17 @@ function buildJS(watch: boolean, done: Function) {
       return bundle();
     });
 
-    es.merge(tasks).on('end', done);
+    es.merge(tasks).on('end', () => {
+      done();
+    });
   });
 }
 
 gulp.task('watch', (done) => {
   gulp.watch('app/styles/**/*.scss', ['sass']);
+  gulp.watch(extraTargets, ['extras']);
+  gulp.watch('app/*.html', ['html']);
+  gulp.watch('app/images/**/*', ['images']);
   buildJS(true, done);
 });
 
@@ -173,7 +174,7 @@ gulp.task('package', function () {
     .pipe(gulp.dest('package'));
 });
 
-gulp.task('build', (cb) => {
+gulp.task('build', ['clean'], (cb) => {
   runSequence(
     'lint', 'js',
     ['html', 'images', 'extras', 'sass'],

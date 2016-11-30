@@ -10,10 +10,12 @@
   },
   "extends": [
     "plugin:flowtype/recommended",
+    "plugin:react/recommended",
     "eslint:recommended"
   ],
   "plugins": [
-    "flowtype"
+    "flowtype",
+    "react"
   ],
   "globals": {
     "chrome": true

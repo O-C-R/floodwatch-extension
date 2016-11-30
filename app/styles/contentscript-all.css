@@ -1,17 +1,12 @@
 .floodwatch-screen-inprogress {
-  -webkit-filter: sepia(0.5) hue-rotate(30deg);
-  filter: sepia(0.5) hue-rotate(30deg);
-  outline: 1px dashed rgba( 0, 255, 0, 1.0 );
+  outline: 1px dashed rgba(255, 255, 0, 1.0);
 }
 
 .floodwatch-isad {
-  -webkit-filter: sepia(0.9) hue-rotate(310deg);
   filter: sepia(0.9) hue-rotate(310deg);
-  outline: 3px dashed rgba( 0, 255, 255, 1.0 );
 }
 
 .floodwatch-recorded {
-  -webkit-filter: sepia(0.9) hue-rotate(290deg);
+  display: none;
   filter: sepia(0.9) hue-rotate(290deg);
-  outline: 3px dashed rgba( 255, 0, 0, 1.0 );
 }

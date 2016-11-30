@@ -3,22 +3,23 @@
 import $ from 'jquery';
 import log from 'loglevel';
 
+import {setupLogging} from './core/util';
 import {Frame} from './contentscript-app/frame';
-import {promiseTimeout, tryUntil} from './core/util';
 
 let frame: Frame;
 let frameId = 'none';
 
 window.addEventListener('unhandledrejection', event => {
-  console.error('unhandledrejection');
-  console.error(event);
+  log.error('unhandledrejection');
+  log.error(event);
 });
 
 function attachListener() {
   const msgListener = frame.onWindowMessage.bind(frame);
   setInterval(function setupListener() {
     if (!$(document.body).data('fw-frame-id')) {
-      log.info(frameId, 'document body not set in', document);
+      // This notification is important, but it should turn off eventually...
+      // log.info(frameId, 'document body not set in', document);
 
       window.fwFrame = frame;
       $(document.body).attr('data-fw-frame-id', frame.id);
@@ -31,11 +32,7 @@ function attachListener() {
 
 async function start() {
   try {
-    // Debug
-    log.setLevel(log.levels.DEBUG);
-
-    // Staging
-    // log.setLevel(log.levels.WARN);
+    setupLogging();
 
     frame = new Frame(document);
     frameId = frame.id;
@@ -63,7 +60,7 @@ async function start() {
       });
     }
   } catch (e) {
-    console.error(`${frameId} preload error!`, e);
+    log.error(`${frameId} preload error!`, e);
   }
 }
 

@@ -225,7 +225,7 @@ export class Filter {
 
   static matchingUrls(mediaType: string, url: string, topUrl: string, rules: Array<UrlRule>): ?UrlRule {
     const topUrlObj = new URL(topUrl);
-    const topUrlOrigin = topUrlObj.origin !== "null" ? topUrlObj.origin : undefined;
+    const topUrlOrigin = topUrlObj.origin !== 'null' ? topUrlObj.origin : undefined;
 
     const urlObj = new URL(url, topUrlOrigin);
     const is3P = isThirdParty(urlObj, topUrlObj);
