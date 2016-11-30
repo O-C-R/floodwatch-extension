@@ -221,8 +221,8 @@ export async function main() {
     await FWApiClient.get().getCurrentPerson();
     log.info('Logged in as', FWApiClient.get().username);
   } catch (e) {
-    log.info('Not logged in, continuing...');
-    // Not logged in, move on.
+    log.info('Not logged in, popping up the login screen...');
+    chrome.tabs.create({ url : "popup.html?closeOnLogin=true" });
   }
 
   // Load the filter the first time
