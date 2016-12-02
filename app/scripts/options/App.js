@@ -3,6 +3,8 @@
 import React, {Component} from 'react';
 import log from 'loglevel';
 
+import { FW_WEB_HOST, FW_DEFAULT_PATTERNS_FILE } from '../core/constants';
+
 type State = {
   logLevel: number;
   useDefaultIgnorePatterns: boolean;
@@ -103,7 +105,7 @@ export class App extends Component {
         <div className="option-group">
           <span className="header">Ignored websites</span>
           <div className="option">
-            <span className="label">Use <a href="#">default ignore patterns</a>: </span>
+            <span className="label">Use <a href={`${FW_WEB_HOST}${FW_DEFAULT_PATTERNS_FILE}`}>default ignore patterns</a>: </span>
             <input type="checkbox" onChange={this.handleUseDefaultStoragePatternsChange.bind(this)} checked={this.state.useDefaultIgnorePatterns}></input>
           </div>
           <br />
