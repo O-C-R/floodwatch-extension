@@ -4,20 +4,32 @@ import log from 'loglevel';
 
 import {FWApiClient, FWAuthenticationError} from './api';
 import {Filter} from './filter';
+import {IgnorePatterns} from './ignore_patterns';
 import {FWTabInfo} from './tab';
 
 import {serializeImageElement} from '../core/images';
 import {Rect} from '../core/shapes';
 import {FWError, setupLogging} from '../core/util';
-import {FORCE_AD_SEND_TIMEOUT, ABP_FILTER_RELOAD_TIME_MINUTES, ABP_FILTER_RETRY_DELAY_MS, FW_API_HOST} from '../core/constants';
 import type {ApiAd, ApiAdPayload} from '../core/types';
+
+import {
+  FORCE_AD_SEND_TIMEOUT,
+  ABP_FILTER_RELOAD_TIME_MINUTES,
+  ABP_FILTER_RETRY_DELAY_MS,
+  FW_PATTERNS_RELOAD_TIME_MINUTES,
+  FW_PATTERNS_RETRY_DELAY_MS,
+  FW_API_HOST,
+  FW_WEB_HOST,
+  EASYLIST_URL,
+  FW_DEFAULT_PATTERNS_FILE
+} from '../core/constants';
 
 let fwApiClient: FWApiClient;
 
 async function loadFilter() {
   try {
     log.info('Reloading filter...');
-    await Filter.get().addRulesFromUrl('https://easylist-downloads.adblockplus.org/easylist.txt');
+    await Filter.get().addRulesFromUrl(EASYLIST_URL);
 
     // TODO: move this into a floodwatch-hosted file
     // await Filter.get().addRulesFromText('*facebook.com%2Fads%2Fimage*$image');
@@ -28,6 +40,63 @@ async function loadFilter() {
   } catch (e) {
     // Set alarm to try again soon.
     chrome.alarms.create('reloadFilter', { when: Date.now() + ABP_FILTER_RETRY_DELAY_MS });
+    log.error(e);
+  }
+}
+
+let remotePatternCache = [];
+async function loadDefaultIgnorePatterns() {
+  try {
+    log.info('Loading remote patterns!');
+    const res = await fetch(FW_WEB_HOST + FW_DEFAULT_PATTERNS_FILE);
+    const fwDefaultPatterns = await res.text();
+    log.info('Got remote patterns!');
+    remotePatternCache = fwDefaultPatterns.split('\n');
+
+    // Set alarm to do this again after a while.
+    chrome.alarms.create('loadDefaultIgnorePatterns', { periodInMinutes: FW_PATTERNS_RELOAD_TIME_MINUTES });
+    log.info('Done loading remote patterns!');
+  } catch (e) {
+    // Set alarm to try again soon.
+    chrome.alarms.create('loadDefaultIgnorePatterns', { when: Date.now() + FW_PATTERNS_RETRY_DELAY_MS });
+    log.error(e);
+  }
+
+  compileIgnorePatterns();
+}
+
+async function compileIgnorePatterns() {
+  try {
+    log.info('Recompiling patterns...');
+
+    let customIgnorePatterns = '', useDefaultIgnorePatterns = true;
+    await new Promise((resolve, reject) => {
+      chrome.storage.sync.get(['ignorePatterns', 'useDefaultIgnorePatterns'], function(items: { [key: string]: any }) {
+        if (!chrome.runtime.lastError) {
+          customIgnorePatterns = items['ignorePatterns'] || '';
+          useDefaultIgnorePatterns = items['useDefaultIgnorePatterns'] !== undefined ? items['useDefaultIgnorePatterns'] : true;
+          resolve();
+        } else {
+          reject(new Error(chrome.runtime.lastError.message));
+        }
+      });
+    });
+
+    IgnorePatterns.get().reset();
+
+    if (useDefaultIgnorePatterns) {
+      log.debug('Using default ignore patterns');
+      IgnorePatterns.get().addMany(remotePatternCache);
+    }
+
+    if (customIgnorePatterns) {
+      log.debug('Using custom ignore patterns');
+      IgnorePatterns.get().addMany(customIgnorePatterns.split('\n'));
+    }
+
+    log.info('Done compiling patterns!');
+  } catch (e) {
+    log.error('Failed to reload patterns...');
     log.error(e);
   }
 }
@@ -139,6 +208,23 @@ async function onCaptureScreenshotMessage(tabId: number, message: Object, sendRe
   }
 }
 
+function onShouldScreenMessage(tabId: number, message: Object, sendResponse: (obj: any) => void) {
+  try {
+    const url = FWTabInfo.getTabAdUrl(tabId);
+    if (!url) {
+      log.debug(tabId, 'has unknown url, screening anyway.');
+      sendResponse({ error: null, data: { shouldScreen: true }});
+    } else {
+      const isIgnored = IgnorePatterns.get().isIgnored(url);
+      log.debug(url, 'is ignored', isIgnored);
+      sendResponse({ error: null, data: { shouldScreen: !isIgnored }});
+    }
+  } catch (e) {
+    log.warn('Not known if it should screen:', e);
+    sendResponse({ error: e.message, data: null });
+  }
+}
+
 async function onLoginMessage(message: any, sendResponse: (obj: any) => void) {
   const payload: { username: string, password: string } = message.payload;
   try {
@@ -198,6 +284,9 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
   } else if (message.type === 'captureScreenshot') {
     onCaptureScreenshotMessage(tabId, message, sendResponse);
     return true;
+  } else if (message.type === 'shouldScreen') {
+    // Function is not async, so we can return false.
+    onShouldScreenMessage(tabId, message, sendResponse);
   }
 
   return false;
@@ -247,6 +336,8 @@ function onLogin() {
 async function onChromeAlarm(alarm: chrome$Alarm) {
   if (alarm.name == 'reloadFilter') {
     await loadFilter();
+  } else if (alarm.name == 'loadDefaultIgnorePatterns') {
+    await loadDefaultIgnorePatterns();
   }
 }
 
@@ -254,6 +345,13 @@ function registerExtension() {
   // $FlowIssue: this is a good definition
   chrome.runtime.onMessage.addListener(onChromeMessage);
   chrome.alarms.onAlarm.addListener(onChromeAlarm);
+
+  // Listen for ignore changes
+  chrome.storage.onChanged.addListener((changes: Object) => {
+    if (changes.ignorePatterns !== undefined || changes.useDefaultIgnorePatterns !== undefined) {
+      compileIgnorePatterns();
+    }
+  });
 }
 
 export async function main() {
@@ -274,6 +372,8 @@ export async function main() {
 
   // Load the filter the first time
   await loadFilter();
+  await loadDefaultIgnorePatterns();
+  await compileIgnorePatterns();
 
   // Load tabs into memory
   await FWTabInfo.loadTabs();

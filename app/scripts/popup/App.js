@@ -59,14 +59,6 @@ export class App extends Component {
 
   handleLogin(username: string) {
     this.setState({ username });
-
-    if (this.state.closeOnLogin) {
-      chrome.tabs.getCurrent(function(tab: ?chrome$Tab) {
-        if (tab && tab.id) {
-          chrome.tabs.remove(tab.id, function() {});
-        }
-      });
-    }
   }
 
   render() {
