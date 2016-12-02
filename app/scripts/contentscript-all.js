@@ -37,6 +37,17 @@ async function start() {
     frame = new Frame(document);
     frameId = frame.id;
 
+    const shouldScreen = await new Promise((resolve, reject) => {
+      frame.sendMessageToBackground('shouldScreen', {}, ({ shouldScreen: boolean }) => {
+        resolve(shouldScreen);
+      })
+    });
+
+    if (!shouldScreen) {
+      log.info('Not screening, the extension said so!');
+      return;
+    }
+
     log.info(`${frame.id} created in document`, document);
     attachListener();
 

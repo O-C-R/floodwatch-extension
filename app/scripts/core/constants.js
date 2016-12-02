@@ -31,5 +31,11 @@ export const FORCE_AD_SEND_TIMEOUT = 5000;
 export const ABP_FILTER_RELOAD_TIME_MINUTES = 60 * 24; // 1 day
 export const ABP_FILTER_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
 
+export const FW_PATTERNS_RELOAD_TIME_MINUTES = 60 * 24; // 1 day
+export const FW_PATTERNS_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+
+export const EASYLIST_URL = 'https://easylist-downloads.adblockplus.org/easylist.txt';
+
 export const FW_API_HOST = 'https://beta.floodwatch.me';
 export const FW_WEB_HOST = 'https://beta.floodwatch.me';
+export const FW_DEFAULT_PATTERNS_FILE = '/static/ignore.txt';
