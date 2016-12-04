@@ -38,8 +38,8 @@ async function start() {
     frameId = frame.id;
 
     const shouldScreen = await new Promise((resolve, reject) => {
-      frame.sendMessageToBackground('shouldScreen', {}, ({ shouldScreen: boolean }) => {
-        resolve(shouldScreen);
+      frame.sendMessageToBackground('shouldScreen', {}, (res: { data: { shouldScreen: boolean } }) => {
+        resolve(res.data.shouldScreen);
       })
     });
 

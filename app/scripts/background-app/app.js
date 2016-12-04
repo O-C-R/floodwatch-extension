@@ -285,8 +285,8 @@ function onChromeMessage(message: any, sender: chrome$MessageSender, sendRespons
     onCaptureScreenshotMessage(tabId, message, sendResponse);
     return true;
   } else if (message.type === 'shouldScreen') {
-    // Function is not async, so we can return false.
     onShouldScreenMessage(tabId, message, sendResponse);
+    return true;
   }
 
   return false;
