@@ -53,6 +53,26 @@
 		}
 	}
 
+	&_stats {
+		margin: 10px 0 15px 0;
+		padding: 0px 40px;
+
+		&_item {
+			display: flex;
+			justify-content: space-between;
+			margin: 5px 0;
+		}
+		
+		&_label {
+			font-weight: 400;
+			opacity: 0.7;
+		}
+
+		&_value {
+			font-weight: bold;
+		}
+	}
+
 	&_form {
 		padding: 0 20px;
 	}
@@ -62,8 +82,16 @@
 		width: 100%;
 	}
 
-	&_submit {
+	&_actions {
+		width: 100%;
+		padding: 0 40px;
+		margin: 10px 0;
+	}
+
+	&_dashboard, &_submit {
 		@extend .btn;
+		width: 100%;
+		margin: 5px 0px;
 	}
 
 	&_signup, &_password-lost {

@@ -5,6 +5,7 @@ import React, {Component} from 'react';
 
 import {Main} from './Main';
 import {Login} from './Login';
+import {Loading} from './Loading';
 import {sendMessageToBackground} from './communication';
 import {setupLogging} from '../core/util';
 import {FW_WEB_HOST} from '../core/constants';
@@ -12,6 +13,7 @@ import {FW_WEB_HOST} from '../core/constants';
 type State = {
   username: ?string;
   tab: boolean;
+  isLoading: boolean;
 }
 
 const STYLE = `
@@ -40,12 +42,14 @@ export class App extends Component {
 
     this.state = {
       username: null,
+      isLoading : true,
       tab
     };
 
     sendMessageToBackground('getLoginStatus', null)
       .then((res: { username: string }) => {
         log.debug('Got loginStatus response', res);
+        this.setState({ isLoading: false })
         if (res.username) {
           this.setState({ username: res.username });
         }
@@ -70,7 +74,11 @@ export class App extends Component {
           <h1 className="extension_header_logo">Floodwatch</h1>
         </div>
 
-        { this.state.username ?
+        { this.state.isLoading &&
+         <Loading />
+        }
+
+        { !this.state.isLoading && this.state.username ?
           <Main
             username={this.state.username}
             handleLogout={this.handleLogout.bind(this)} />

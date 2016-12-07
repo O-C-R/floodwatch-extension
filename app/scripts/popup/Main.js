@@ -51,14 +51,21 @@ export class Main extends Component {
         { this.state.err ? <h3 className="error">{this.state.err}</h3> : '' }
 
         <main className="extension_main">
-          <form onSubmit={this.handleLogout.bind(this)}>
-            <img className="extension_check" src="images/check.svg" alt=""/>
-            <input
-              className="extension_submit"
-              disabled={this.state.isSubmitting}
-              type="submit"
-              value="Logout" />
-          </form>
+          <div className="extension_stats">
+              <div className="extension_stats_item"><span className="extension_stats_label">Ads seen today</span><span className="extension_stats_value">42</span></div>
+              <div className="extension_stats_item"><span className="extension_stats_label">Ads seen all time</span><span className="extension_stats_value">666</span></div>
+          </div>
+
+          <div className="extension_actions">        
+            <a href="#" className="extension_dashboard">Dashboard</a>
+            <form onSubmit={this.handleLogout.bind(this)}>
+              <input
+                className="extension_submit"
+                disabled={this.state.isSubmitting}
+                type="submit"
+                value="Logout" />
+            </form>
+          </div>
         </main>
       </div>
     );

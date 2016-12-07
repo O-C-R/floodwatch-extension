@@ -6,6 +6,12 @@
 
 	@extend .alignXY;
 
+	&-container {
+		margin: 30px auto;
+		width: 100%;
+		position: relative;
+	}
+
 	&::before, &::after {
 		content: '';
 		position: absolute;
