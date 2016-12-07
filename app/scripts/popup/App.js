@@ -16,7 +16,7 @@ type State = {
   isLoading: boolean;
 }
 
-const STYLE = `
+const TAB_STYLE = `
 html, body {
     height: 100%;
     width: 100%;
@@ -43,7 +43,8 @@ export class App extends Component {
     this.state = {
       username: null,
       isLoading : true,
-      tab
+      tab,
+      version: chrome.runtime.getManifest().version || ''
     };
 
     sendMessageToBackground('getLoginStatus', null)
@@ -68,7 +69,7 @@ export class App extends Component {
   render() {
     return (
       <div className={['extension', this.state.tab ? 'tab' : ''].join(' ')}>
-        { this.state.tab && <style>{STYLE}</style> }
+        { this.state.tab && <style>{TAB_STYLE}</style> }
 
         <div className="extension_header">
           <h1 className="extension_header_logo">Floodwatch</h1>
@@ -89,7 +90,7 @@ export class App extends Component {
 
         <footer className="extension_footer">
           <a className="extension_footer_about" href={`${FW_WEB_HOST}/about`} target="blank">About Floodwatch</a>
-          <p className="extension_footer_version">V 0.1</p>
+          <p className="extension_footer_version">v{this.state.version}</p>
         </footer>
       </div>
     );
